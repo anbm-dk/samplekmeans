@@ -41,6 +41,8 @@ R.version.string
 
 # usethis::use_description()
 
+# use_gpl3_license()
+
 devtools::build_readme()  # Renders the readme
 
 usethis::use_build_ignore(
