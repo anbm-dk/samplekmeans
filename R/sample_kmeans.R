@@ -1,51 +1,82 @@
-# Function to sample a raster layer using kmeans
+#' k-means sampling
+#'
+#' Produces a set of points sampled from a raster or point dataset.
+#'
+#' @param input An input `SpatRaster` object created by package [terra].
+#' @param clusters Number of clusters.
+#' @param ncells Number of cells to extract, otherwise uses all cells.
+#' @param use_xy Add xy coordinates as variables for clustering.
+#' @param only_xy Use only xy coordinates.
+#' @param weights Raster layer or numeric vector with weights between 0 and 1.
+#' @param scale Center and scale variables.
+#' @param pca Use principal component analysis on variables.
+#' @param tol_pca Tolerance for pca (remove PCs below threshold).
+#' @param n_pcs Maximum number of principal components.
+#' @param num_init See KMeans_rcpp.
+#' @param max_iters See KMeans_rcpp.
+#' @param initializer See KMeans_rcpp.
+#' @param CENTROIDS KMeans_rcpp.
+#' @param tol_kmeans See KMeans_rcpp.
+#' @param tol_opt See KMeans_rcpp.
+#' @param seed See KMeans_rcpp.
+#' @param MiniBatch Use MiniBatchKmeans (fast, less accurate).
+#' @param batch_size See MiniBatchKmeans.
+#' @param init_frac See MiniBatchKmeans.
+#' @param early_stop See MiniBatchKmeans.
+#' @param filename_cl File names for rasters with clusters (1) and distances (2).
+#' @param args_cl List with arguments for writing raster.
+#' @param filename_d File name for distance rasters.
+#' @param args_d arguments for writing distance rasters.
+#' @param sp_pts Output locations as spatial points.
+#' @param filename_pts Filename for output locations.
+#' @param shp Write output locations as a shapefile.
+#' @param args_pts Arguments for writing output pointsx.
+#' @param cores Number of cpu cores to use.
+#' @param verbose Print messages during processing.
+#' @importFrom methods is
+#' @importFrom stats  complete.cases prcomp predict sd
 
 sample_kmeans <- function(
-    input = NULL # Raster object
-    , clusters = 3 # Number of clusters
-    , ncells = NULL # Number of cells to extract, otherwise uses all cells
-    , use_xy = FALSE # Add xy coordinates as variables for clustering
-    , only_xy = FALSE # Use only xy coordinates
-    , weights = NULL # Raster layer or numeric vector with weights between 0 and 1
-    , scale = TRUE # Center and scale variables
-    , pca = FALSE # Use principal component analysis on variables
-    , tol_pca = 0 # Tolerance for pca (remove PCs below threshold)
-    , n_pcs = NULL # Maximum number of principal components
-    , num_init = 1 # See KMeans_rcpp
-    , max_iters = 10 # See KMeans_rcpp
-    , initializer = NULL # See KMeans_rcpp
-    , CENTROIDS = NULL # See KMeans_rcpp
-    , tol_kmeans = 1e-04 # See KMeans_rcpp
-    , tol_opt = 0.3 # See KMeans_rcpp
-    , seed = NULL # See KMeans_rcpp
-    , MiniBatch = FALSE # Use MiniBatchKmeans (fast, less accurate)
-    , batch_size = 10 # See MiniBatchKmeans
-    , init_frac = 1 # See MiniBatchKmeans
-    , early_stop = 10 # See MiniBatchKmeans
-    , filename_cl = NULL # File names for rasters with clusters (1) and distances (2)
-    , args_cl = NULL # List with arguments for writing raster
-    , filename_d = NULL,
-    args_d = NULL
-    # , round_d      = NULL   # Round distance raster to this number
-    , sp_pts = FALSE # Output locations as spatial points
-    , filename_pts = NULL # Filename for output locations
-    , shp = FALSE # Write output locations as a shapefile
-    , args_pts = NULL # Arguments for writing output pointsx
-    , cores = NULL # Number of cpu cores to use
-    # , m = 2 # Number of blocks for clusterR
-    , verbose = FALSE # Print messages during processing
-    ) {
+    input = NULL,
+    clusters = 3,
+    ncells = NULL,
+    use_xy = FALSE, # Add xy coordinates as variables for clustering
+    only_xy = FALSE, # Use only xy coordinates
+    weights = NULL, # Raster layer or numeric vector with weights between 0 and 1
+    scale = TRUE, # Center and scale variables
+    pca = FALSE, # Use principal component analysis on variables
+    tol_pca = 0, # Tolerance for pca (remove PCs below threshold)
+    n_pcs = NULL, # Maximum number of principal components
+    num_init = 1, # See KMeans_rcpp
+    max_iters = 10, # See KMeans_rcpp
+    initializer = NULL, # See KMeans_rcpp
+    CENTROIDS = NULL, # See KMeans_rcpp
+    tol_kmeans = 1e-04, # See KMeans_rcpp
+    tol_opt = 0.3, # See KMeans_rcpp
+    seed = NULL, # See KMeans_rcpp
+    MiniBatch = FALSE, # Use MiniBatchKmeans (fast, less accurate)
+    batch_size = 10, # See MiniBatchKmeans
+    init_frac = 1, # See MiniBatchKmeans
+    early_stop = 10, # See MiniBatchKmeans
+    filename_cl = NULL, # File names for rasters with clusters (1) and distances (2)
+    args_cl = NULL, # List with arguments for writing raster
+    filename_d = NULL,
+    args_d = NULL,
+    sp_pts = FALSE, # Output locations as spatial points
+    filename_pts = NULL, # Filename for output locations
+    shp = FALSE, # Write output locations as a shapefile
+    args_pts = NULL, # Arguments for writing output pointsx
+    cores = NULL, # Number of cpu cores to use
+    verbose = FALSE # Print messages during processing
+) {
+  . <- NULL # To avoid warnings in the package check.
+
   backup_options <- options()
   options(error = traceback) # Did this make it work? Find out how to reset options
 
   if (is.null(input) & is.null(weights)) {
     stop("No input data.")
   }
-
-  require(magrittr)
-  require(future.apply)
-  require(fields)
-  require(ClusterR) # Not to be confused with the clusterR function
 
   if (verbose == TRUE) {
     message("Preparing input data.")
@@ -58,10 +89,10 @@ sample_kmeans <- function(
   }
 
   # Extraction for rasters
-  itisasraster <- is(input, "SpatRaster")
+  itisasraster <- methods::is(input, "SpatRaster")
 
   itispoints <- FALSE
-  if (is(input, "SpatVector")) {
+  if (methods::is(input, "SpatVector")) {
     if (terra::geomtype(input) == "points") {
       itispoints <- TRUE
     }
@@ -192,7 +223,8 @@ sample_kmeans <- function(
       if (is.null(n_pcs)) {
         n_pcs <- ncol(df)
       }
-      pcs <- prcomp(df,
+      pcs <- stats::prcomp(
+        df,
         scale. = FALSE,
         tol = tol_pca,
         retx = TRUE,
@@ -251,10 +283,14 @@ sample_kmeans <- function(
   }
 
   # Remove empty centroids
-  if (myclusters$centroids %>% complete.cases() %>% sum() < clusters) {
+  n_complete <- myclusters$centroids %>%
+    stats::complete.cases() %>%
+    sum()
+
+  if (n_complete < clusters) {
     mycentroids <- myclusters$centroids %>%
       as.data.frame() %>%
-      drop_na()
+      tidyr::drop_na()
     missing <- clusters - nrow(mycentroids)
 
     message(paste0(
@@ -309,7 +345,7 @@ sample_kmeans <- function(
           data.frame()
         colnames(x) <- pcs$rotation %>% rownames()
         dist <- x %>%
-          predict(pcs, .) %>%
+          stats::predict(pcs, .) %>%
           fields::rdist(., mycentroids)
         out <- c(which.min(dist), min(dist, na.rm = TRUE))
       }
@@ -374,13 +410,13 @@ sample_kmeans <- function(
 
       cl <- parallel::makeCluster(cores)
 
-      parallel::clusterEvalQ(
-        cl,
-        {
-          library(fields)
-          library(magrittr)
-        }
-      )
+      # parallel::clusterEvalQ(
+      #   cl,
+      #   {
+      #     library(fields)
+      #     library(magrittr)
+      #   }
+      # )
 
       export_this <- c("mycentroids")
 
@@ -436,12 +472,12 @@ sample_kmeans <- function(
       } else {
         cl <- parallel::makeCluster(cores)
 
-        parallel::clusterEvalQ(
-          cl,
-          {
-            library(magrittr)
-          }
-        )
+        # parallel::clusterEvalQ(
+        #   cl,
+        #   {
+        #     library(magrittr)
+        #   }
+        # )
 
         wdist <- terra::app(s, fun = calc_wdist, cores = cl)
 
@@ -519,12 +555,12 @@ sample_kmeans <- function(
 
       cl <- parallel::makeCluster(cores)
 
-      parallel::clusterEvalQ(
-        cl,
-        {
-          library(magrittr)
-        }
-      )
+      # parallel::clusterEvalQ(
+      #   cl,
+      #   {
+      #     library(magrittr)
+      #   }
+      # )
 
       parallel::clusterExport(cl,
         "zs",
@@ -622,19 +658,18 @@ sample_kmeans <- function(
     colnames(out$points) <- c("x", "y", "ID", "Index")
 
     out$points <- out$points[!duplicated(out$points$ID), ] %>%
-      arrange(ID)
+      dplyr::arrange(ID)
   }
 
   # Write points to file if requested
   if (!is.null(filename_pts)) {
-    require(tools)
     if (tools::file_ext(filename_pts) == "shp") {
       shp <- TRUE
     }
   }
 
   if (shp == TRUE | sp_pts == TRUE) {
-    points_sp <- vect(out$points, geom = c("x", "y"), crs(input))
+    points_sp <- terra::vect(out$points, geom = c("x", "y"), terra::crs(input))
   }
 
   if (!is.null(filename_pts)) {

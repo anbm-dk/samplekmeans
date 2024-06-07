@@ -1,13 +1,25 @@
 Package: samplekmeans
-Title: What the Package Does (One Line, Title Case)
-Version: 0.0.0.9000
-Authors@R: 
-    person("First", "Last", , "first.last@example.com", role = c("aut", "cre"),
-           comment = c(ORCID = "YOUR-ORCID-ID"))
-Description: What the package does (one paragraph).
+Title: Sampling with k-means
+Version: 0.1.0
+Description: Functions to sample datasets based on the k-means algorithm.
 License: GPL (>= 3)
 Encoding: UTF-8
 Roxygen: list(markdown = TRUE)
 RoxygenNote: 7.3.1
 Imports: 
-    magrittr
+    ClusterR,
+    dplyr,
+    fields,
+    foreach,
+    future.apply,
+    magrittr,
+    methods,
+    stats,
+    terra,
+    tidyr,
+    tools
+URL: https://github.com/anbm-dk/samplekmeans
+BugReports: https://github.com/anbm-dk/samplekmeans/issues
+Authors@R: 
+    person("Anders Bjørn", "Møller", , "anbm@agro.au.dk", role = c("aut", "cre"),
+           comment = c(ORCID = "0000-0002-2737-5780"))
