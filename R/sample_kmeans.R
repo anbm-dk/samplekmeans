@@ -33,6 +33,7 @@
 #' @param args_pts Arguments for writing output pointsx.
 #' @param cores Number of cpu cores to use.
 #' @param verbose Print messages during processing.
+#' @export
 #' @importFrom methods is
 #' @importFrom stats  complete.cases prcomp predict sd
 
