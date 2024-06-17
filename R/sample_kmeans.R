@@ -652,11 +652,13 @@ sample_kmeans <- function(
 
     pts <- apply(s, 1, FUN = findpoint)
 
-    out$points <- cbind(terra::crds(input), pts, c(1:length(pts))) %>%
+    out$points <- terra::crds(input) %>%
       as.data.frame() %>%
-      stats::complete.cases()
-
-    colnames(out$points) <- c("x", "y", "ID", "Index")
+      dplyr::mutate(
+        ID = pts,
+        Index = c(1:length(pts))
+      ) %>%
+      tidyr:: drop_na()
 
     out$points <- out$points[!duplicated(out$points$ID), ] %>%
       dplyr::arrange(ID)
