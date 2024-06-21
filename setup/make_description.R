@@ -34,6 +34,8 @@ x$set_dep("fields")
 x$set_dep("tidyr")
 x$set_dep("future.apply")
 x$set_dep("tools")
+x$set_dep("rlang")
+
 
 # Set authors
 

@@ -36,6 +36,8 @@
 #' @export
 #' @importFrom methods is
 #' @importFrom stats  complete.cases prcomp predict sd
+#' @importFrom magrittr %<>%
+#' @importFrom rlang .data
 
 sample_kmeans <- function(
     input = NULL,
@@ -578,7 +580,7 @@ sample_kmeans <- function(
     names(pts) <- "ID"
 
     out$points <- as.data.frame(pts, xy = TRUE, na.rm = TRUE) %>%
-      dplyr::arrange(ID)
+      dplyr::arrange(.data$ID)
 
     out$points <- out$points[!duplicated(out$points$ID), ]
   }
@@ -661,7 +663,7 @@ sample_kmeans <- function(
       tidyr:: drop_na()
 
     out$points <- out$points[!duplicated(out$points$ID), ] %>%
-      dplyr::arrange(ID)
+      dplyr::arrange(.data$ID)
   }
 
   # Write points to file if requested

@@ -2,8 +2,10 @@
 
 export("%>%")
 export(sample_kmeans)
+importFrom(magrittr,"%<>%")
 importFrom(magrittr,"%>%")
 importFrom(methods,is)
+importFrom(rlang,.data)
 importFrom(stats,complete.cases)
 importFrom(stats,prcomp)
 importFrom(stats,predict)
