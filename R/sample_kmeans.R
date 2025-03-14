@@ -38,6 +38,12 @@
 #' @importFrom stats  complete.cases prcomp predict sd
 #' @importFrom magrittr %<>%
 #' @importFrom rlang .data
+#' @importFrom methods is
+#' @importFrom tidyr drop_na
+#' @importFrom terra nlyr spatSample compareGeom geomtype
+#' @importFrom ClusterR KMeans_rcpp MiniBatchKmeans
+#' @importFrom dplyr arrange mutate
+#' @importFrom fields rdist
 
 sample_kmeans <- function(
     input = NULL,
@@ -251,7 +257,7 @@ sample_kmeans <- function(
     seed <- sample(10000, 1)
   }
   if (is.null(initializer)) {
-    initializer <- "optimal_init"
+    initializer <- "kmeans++"
   }
 
   if (MiniBatch == FALSE) {
@@ -384,7 +390,8 @@ sample_kmeans <- function(
     xy_r <- c(
       terra::init(input, "x"),
       terra::init(input, "y")
-    )
+    ) %>%
+      terra::mask(., sum(input))
     if (use_xy == TRUE) {
       if (only_xy == TRUE) {
         input <- xy_r
@@ -412,14 +419,6 @@ sample_kmeans <- function(
       showConnections()
 
       cl <- parallel::makeCluster(cores)
-
-      # parallel::clusterEvalQ(
-      #   cl,
-      #   {
-      #     library(fields)
-      #     library(magrittr)
-      #   }
-      # )
 
       export_this <- c("mycentroids")
 
@@ -474,13 +473,6 @@ sample_kmeans <- function(
         wdist <- terra::app(s, fun = calc_wdist)
       } else {
         cl <- parallel::makeCluster(cores)
-
-        # parallel::clusterEvalQ(
-        #   cl,
-        #   {
-        #     library(magrittr)
-        #   }
-        # )
 
         wdist <- terra::app(s, fun = calc_wdist, cores = cl)
 
@@ -557,13 +549,6 @@ sample_kmeans <- function(
       showConnections()
 
       cl <- parallel::makeCluster(cores)
-
-      # parallel::clusterEvalQ(
-      #   cl,
-      #   {
-      #     library(magrittr)
-      #   }
-      # )
 
       parallel::clusterExport(cl,
         "zs",
@@ -660,7 +645,7 @@ sample_kmeans <- function(
         ID = pts,
         Index = c(1:length(pts))
       ) %>%
-      tidyr:: drop_na()
+      tidyr::drop_na()
 
     out$points <- out$points[!duplicated(out$points$ID), ] %>%
       dplyr::arrange(.data$ID)

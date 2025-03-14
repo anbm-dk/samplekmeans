@@ -32,9 +32,9 @@ x$set_dep("stats")
 x$set_dep("dplyr")
 x$set_dep("fields")
 x$set_dep("tidyr")
-x$set_dep("future.apply")
 x$set_dep("tools")
 x$set_dep("rlang")
+x$set_dep("parallel")
 
 
 # Set authors

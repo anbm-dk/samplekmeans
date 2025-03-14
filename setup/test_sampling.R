@@ -2,7 +2,7 @@
 
 library(devtools)
 
-# install_github("anbm-dk/samplekmeans", force = TRUE)
+install_github("anbm-dk/samplekmeans", force = TRUE)
 
 library(samplekmeans)
 
@@ -28,6 +28,13 @@ plot(r)
 library(magrittr)
 
 myclusters_r <- sample_kmeans(input = r, use_xy = TRUE)
+
+plot(myclusters_r$clusters)
+points(myclusters_r$points)
+
+# Test with one cluster
+
+myclusters_r <- sample_kmeans(input = r, clusters = 1, use_xy = TRUE)
 
 plot(myclusters_r$clusters)
 points(myclusters_r$points)

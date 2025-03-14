@@ -62,23 +62,4 @@ devtools::check(document = FALSE)
 devtools::install()
 
 
-# Check results:
-
-# '::' or ':::' imports not declared from:
-#   'ClusterR' 'dplyr' 'fields' 'tidyr'
-# 'library' or 'require' calls not declared from:
-#   'ClusterR' 'fields' 'future.apply' 'magrittr' 'tools'
-# 'library' or 'require' calls in package code:
-#   'ClusterR' 'fields' 'future.apply' 'magrittr' 'tools'
-# Please use :: or requireNamespace() instead.
-# See section 'Suggested packages' in the 'Writing R Extensions' manual.
-#
-# ❯ checking R code for possible problems ... NOTE
-# sample_kmeans: no visible global function definition for '%<>%'
-# sample_kmeans : map_clusters_fun: no visible global function definition
-# for '%<>%'
-# sample_kmeans: no visible binding for global variable 'ID'
-# Undefined global functions or variables:
-#   %<>% ID
-
 # END
