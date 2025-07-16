@@ -324,36 +324,23 @@ sample_kmeans <- function(
       )
     }
 
-    if (nrow(myclusters$centroids) == clusters) {
+    # Not counting empty centroids
+    n_complete <- myclusters$centroids %>%
+      stats::complete.cases() %>%
+      sum()
+
+    if (n_complete == clusters) {
       runagain <- FALSE
     } else {
-      diff_try <- clusters - nrow(myclusters$centroids)
-      clusters_try %<>% add(diff_try)
-      seed_try %<>% add(1)
+      diff_try <- clusters - n_complete
+      clusters_try %<>% magrittr::add(diff_try)
+      seed_try %<>% magrittr::add(1)
     }
   }
 
-  # Remove empty centroids
-  n_complete <- myclusters$centroids %>%
-    stats::complete.cases() %>%
-    sum()
-
-  if (n_complete < clusters) {
-    myclusters$centroids <- myclusters$centroids %>%
-      as.data.frame() %>%
-      tidyr::drop_na()
-    missing <- clusters - nrow(myclusters$centroids)
-
-    message(paste0(
-      "A number of clusters (",
-      missing,
-      ") contained no data. The function only produced ",
-      clusters - missing,
-      " points."
-    ))
-  } else {
-    mycentroids <- myclusters$centroids %>% as.data.frame()
-  }
+  mycentroids <- myclusters$centroids %>%
+    as.data.frame() %>%
+    tidyr::drop_na()
 
   # Functions to map clusters
   if (pca == FALSE & scale == FALSE) {
