@@ -15,7 +15,11 @@ r <- rast(f)
 
 plot(r)
 
+myweights <- r / unlist(global(r, "max", na.rm=TRUE))
 
+myweights <- myweights^2
+
+plot(myweights)
 
 # 6: stop("[", f, "] ", emsg, ..., call. = FALSE)
 # 5: error("app", "the number of values returned by 'fun' is not appropriate")
@@ -27,10 +31,24 @@ plot(r)
 
 library(magrittr)
 
-myclusters_r <- sample_kmeans(input = r, use_xy = TRUE)
+myclusters_r <- sample_kmeans(
+  input = r,
+  clusters = 20,
+  weights = myweights,
+  use_xy = TRUE,
+  # only_xy = TRUE,
+  xy_weight = c(1, 2),
+  layer_weights = 1
+  )
 
 plot(myclusters_r$clusters)
-points(myclusters_r$points)
+points(myclusters_r$points, col = "red", pch = 20)
+
+plot(myclusters_r$distances)
+points(myclusters_r$points, col = "red", pch = 20)
+
+plot(r)
+points(myclusters_r$points, col = "red", pch = 20)
 
 # Test with one cluster
 
@@ -57,7 +75,7 @@ myclusters_v <- sample_kmeans(v2, use_xy = TRUE)
 myclusters_v
 
 plot(v2)
-points(myclusters_v$points, col = "red")
+points(myclusters_v$points, col = "red", pch = 20)
 
 
 # END

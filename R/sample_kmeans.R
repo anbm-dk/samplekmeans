@@ -52,6 +52,8 @@ sample_kmeans <- function(
     use_xy = FALSE, # Add xy coordinates as variables for clustering
     only_xy = FALSE, # Use only xy coordinates
     weights = NULL, # Raster layer or numeric vector with weights between 0 and 1
+    layer_weights = NULL,  # Numeric vector with weights for each input parameter.
+    xy_weight = NULL,  # Numeric vector of weights for the x and y coordinates (repeated if length 1)
     scale = TRUE, # Center and scale variables
     pca = FALSE, # Use principal component analysis on variables
     tol_pca = 0, # Tolerance for pca (remove PCs below threshold)
@@ -63,14 +65,15 @@ sample_kmeans <- function(
     tol_kmeans = 1e-04, # See KMeans_rcpp
     tol_opt = 0.3, # See KMeans_rcpp
     seed = NULL, # See KMeans_rcpp
+    force_seed = FALSE,
     MiniBatch = FALSE, # Use MiniBatchKmeans (fast, less accurate)
     batch_size = 10, # See MiniBatchKmeans
     init_frac = 1, # See MiniBatchKmeans
     early_stop = 10, # See MiniBatchKmeans
     filename_cl = NULL, # File names for rasters with clusters (1) and distances (2)
     args_cl = NULL, # List with arguments for writing raster
-    filename_d = NULL,
-    args_d = NULL,
+    filename_d = NULL, # Filename for output distances
+    args_d = NULL, # Arguments for writing output distances
     sp_pts = FALSE, # Output locations as spatial points
     filename_pts = NULL, # Filename for output locations
     shp = FALSE, # Write output locations as a shapefile
@@ -200,7 +203,21 @@ sample_kmeans <- function(
     df <- df[, -c(1:2)]
   }
 
-  if (scale == TRUE) # Scaling
+  if (!is.null(layer_weights) | !is.null(xy_weight)) {
+    sds_scaler <- df %>% ncol() %>% rep(1, .)
+
+    if ( (!is.null(xy_weight) ) & (use_xy == TRUE) ) {
+      sds_scaler[1:2] <- xy_weight
+
+      if ( (!is.null(layer_weights)) & (only_xy == FALSE)) {
+        sds_scaler[-c(1:2)] <- layer_weights
+      }
+    } else {
+      sds_scaler <- layer_weights
+    }
+  }
+
+  if ( (scale == TRUE) | (exists("sds_scaler")) ) # Scaling
     {
       if (verbose == TRUE) {
         message("Scaling input variables.")
@@ -209,11 +226,19 @@ sample_kmeans <- function(
         df %<>% as.data.frame
       }
       means <- apply(df, 2, mean)
-      sds <- apply(df, 2, sd)
-      if (use_xy == TRUE) {
-        sds[1:2] <- max(sds[1:2])
+      if (scale == TRUE) {
+        sds <- apply(df, 2, sd)
+        if (use_xy == TRUE) {
+          sds[1:2] <- max(sds[1:2])
+        }
+        sds[sds == 0] <- 1
+      } else {
+        sds <- df %>% ncol() %>% rep(1, .)
+        scale <- TRUE
       }
-      sds[sds == 0] <- 1
+      if (exists("sds_scaler")) {
+        sds %<>% magrittr::divide_by(sds_scaler)
+      }
       if (verbose == TRUE) {
         scaling <- rbind(means, sds)
         rownames(scaling) <- c("Mean", "SD")
@@ -260,35 +285,52 @@ sample_kmeans <- function(
     initializer <- "kmeans++"
   }
 
-  if (MiniBatch == FALSE) {
-    myclusters <- ClusterR::KMeans_rcpp(
-      df,
-      clusters = clusters,
-      num_init = num_init,
-      max_iters = max_iters,
-      initializer = initializer,
-      CENTROIDS = CENTROIDS,
-      tol = tol_kmeans,
-      tol_optimal_init = tol_opt,
-      seed = seed,
-      verbose = verbose
-    )
-  } else {
-    myclusters <- ClusterR::MiniBatchKmeans(
-      df,
-      clusters = clusters,
-      num_init = num_init,
-      max_iters = max_iters,
-      initializer = initializer,
-      CENTROIDS = CENTROIDS,
-      tol = tol_kmeans,
-      tol_optimal_init = tol_opt,
-      seed = seed,
-      batch_size = batch_size,
-      init_fraction = init_frac,
-      early_stop_iter = early_stop,
-      verbose = verbose
-    )
+  seed_try <- seed
+  diff_try <- 0
+  clusters_try <- clusters
+  runagain <- TRUE
+
+  while (runagain) {
+    set.seed(seed_try)
+
+    if (MiniBatch == FALSE) {
+      myclusters <- ClusterR::KMeans_rcpp(
+        df,
+        clusters = clusters_try,
+        num_init = num_init,
+        max_iters = max_iters,
+        initializer = initializer,
+        CENTROIDS = CENTROIDS,
+        tol = tol_kmeans,
+        tol_optimal_init = tol_opt,
+        seed = seed_try,
+        verbose = verbose
+      )
+    } else {
+      myclusters <- ClusterR::MiniBatchKmeans(
+        df,
+        clusters = clusters_try,
+        num_init = num_init,
+        max_iters = max_iters,
+        initializer = initializer,
+        CENTROIDS = CENTROIDS,
+        tol = tol_kmeans,
+        tol_optimal_init = tol_opt,
+        seed = seed_try,
+        batch_size = batch_size,
+        init_fraction = init_frac,
+        early_stop_iter = early_stop,
+        verbose = verbose
+      )
+    }
+
+    if (nrow(mycentroids) == clusters) {
+      runagain <- FALSE
+    } else {
+      diff_try <- clusters - nrow(mycentroids)
+      clusters_try %<>% add(diff_try)
+      seed_try %<>% add(1)
+    }
   }
 
   # Remove empty centroids
