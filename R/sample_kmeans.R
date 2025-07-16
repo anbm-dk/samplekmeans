@@ -324,10 +324,10 @@ sample_kmeans <- function(
       )
     }
 
-    if (nrow(mycentroids) == clusters) {
+    if (nrow(myclusters$centroids) == clusters) {
       runagain <- FALSE
     } else {
-      diff_try <- clusters - nrow(mycentroids)
+      diff_try <- clusters - nrow(myclusters$centroids)
       clusters_try %<>% add(diff_try)
       seed_try %<>% add(1)
     }
@@ -339,10 +339,10 @@ sample_kmeans <- function(
     sum()
 
   if (n_complete < clusters) {
-    mycentroids <- myclusters$centroids %>%
+    myclusters$centroids <- myclusters$centroids %>%
       as.data.frame() %>%
       tidyr::drop_na()
-    missing <- clusters - nrow(mycentroids)
+    missing <- clusters - nrow(myclusters$centroids)
 
     message(paste0(
       "A number of clusters (",
