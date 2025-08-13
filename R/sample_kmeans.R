@@ -2,12 +2,15 @@
 #'
 #' Produces a set of points sampled from a raster or point dataset.
 #'
-#' @param input An input `SpatRaster` object created by package [terra].
+#' @param input An input `data.frame`, or a `SpatRaster` or `SpatVector` object created by package [terra]. The input should contain only numeric variables for clustering.
 #' @param clusters Number of clusters.
 #' @param ncells Number of cells to extract, otherwise uses all cells.
-#' @param use_xy Add xy coordinates as variables for clustering.
-#' @param only_xy Use only xy coordinates.
-#' @param weights Raster layer or numeric vector with weights between 0 and 1.
+#' @param use_xy Should the geographic xy coordinates be used as variables for clustering?
+#' @param only_xy Should the algorithm Use only xy coordinates?
+#' @param weights A `SpatRaster` object or numeric vector with weights between 0 and 1.
+#' @param layer_weights Numeric vector with weights for each input parameter.
+#' @param xy_weight Numeric vector of weights for the x and y coordinates (repeated if length 1).
+#' @param candidates Numeric vector with indices for the points or rows that can be selected as centers for the clusters, or a `SpatRaster` object with a mask for the areas that can be selected.
 #' @param scale Center and scale variables.
 #' @param pca Use principal component analysis on variables.
 #' @param tol_pca Tolerance for pca (remove PCs below threshold).
@@ -54,6 +57,7 @@ sample_kmeans <- function(
     weights = NULL, # Raster layer or numeric vector with weights between 0 and 1
     layer_weights = NULL,  # Numeric vector with weights for each input parameter.
     xy_weight = NULL,  # Numeric vector of weights for the x and y coordinates (repeated if length 1)
+    candidates = NULL,
     scale = TRUE, # Center and scale variables
     pca = FALSE, # Use principal component analysis on variables
     tol_pca = 0, # Tolerance for pca (remove PCs below threshold)
@@ -95,28 +99,50 @@ sample_kmeans <- function(
   }
 
   if (is.null(input) & !is.null(weights)) {
-    message("No input variables. Using only coordinates.")
-    only_xy <- TRUE
-    input <- weights
+    if (is.vector(weights)) {
+      message("No input variables. Using weights as an input variable.")
+      input <- data.frame(w = weights)
+    } else {
+      message("No input variables. Using only coordinates.")
+      only_xy <- TRUE
+      input <- weights
+    }
   }
 
   # Extraction for rasters
-  itisasraster <- methods::is(input, "SpatRaster")
+  inputisraster <- methods::is(input, "SpatRaster")
 
-  itispoints <- FALSE
+  inputispoints <- FALSE
   if (methods::is(input, "SpatVector")) {
     if (terra::geomtype(input) == "points") {
-      itispoints <- TRUE
+      inputispoints <- TRUE
     }
+  }
+
+  inputisdf <- FALSE
+  if (!inputisraster & !inputispoints) {
+    inputisdf <- is.data.frame(input)
+  }
+
+  if ((inputisraster + inputispoints + inputisdf) != 1) {
+    stop("Input must be either a data frame, a SpatRaster or points.")
+  }
+
+  if (inputisdf) {
+    only_xy <- FALSE
+    use_xy <- FALSE
+    xy_weight <- NULL
+    xy <- NULL
+    sp_pts <- FALSE
   }
 
   if (only_xy) {
     n_vars <- 2
   } else {
-    if (itisasraster) {
+    if (inputisraster) {
       n_vars <- terra::nlyr(input)
     }
-    if (itispoints) {
+    if (inputispoints) {
       n_vars <- ncol(input)
     }
     if (use_xy) {
@@ -124,12 +150,28 @@ sample_kmeans <- function(
     }
   }
 
-  if (itisasraster) {
-    if (!is.null(input) & !is.null(weights)) {
-      if (terra::compareGeom(input, weights) == FALSE) {
-        stop("Input and weights rasters do not match")
+  # Extraction for rasters
+  if (inputisraster) {
+    if (!is.null(weights)) {
+      if (!methods::is(weights, "SpatRaster")) {
+        stop("When input is a SpatRaster, weights must also be a SpatRaster.")
+      } else {
+        if (terra::compareGeom(input, weights) == FALSE) {
+          stop("Input and weights rasters do not match.")
+        } else {
+          input <- c(input, weights)
+        }
       }
-      input <- c(input, weights)
+    }
+    if (!is.null(candidates)) {
+      if (is.vector(candidates)) {
+        stop("When input is a SpatRaster, candidates must be a SpatRaster or points.")
+      }
+      if (methods::is(candidates, "SpatRaster")) {
+        if (terra::compareGeom(input, candidates) == FALSE) {
+          stop("Input and candidates rasters do not match.")
+        }
+      }
     }
     if (is.null(ncells)) { # Use all cells if ncells is NULL
       df <- as.data.frame(input, xy = TRUE, na.rm = TRUE)
@@ -154,12 +196,50 @@ sample_kmeans <- function(
   }
 
   # Extraction for spatial points
-  if (itispoints) {
-    if (!is.null(input) & !is.null(weights)) {
-      if (length(input) != length(weights)) {
-        stop("Input and weights coordinates do not match")
+  if (inputispoints) {
+    if (!is.null(weights)) {
+      # check weights
+      if (!methods::is(weights, "SpatRaster") & !is.vector(weights)) {
+        stop("When the input is points, the weights must be a numeric vector or SpatRaster object")
       }
-      input$weights <- weights
+      if (is.vector(weights)) {
+        if (length(input) != length(weights)) {
+          stop("The number of weights do not match the input points.")
+        }
+      } else {
+        input$weights <- weights
+      }
+      if (methods::is(weights, "SpatRaster")) {
+        weights_sample <- terra::extract(
+          x = weights,
+          y = input,
+          ID = FALSE,
+          layer = 1
+        ) %>%
+          magrittr::extract2(1)
+        weights <- weights_sample
+        input$weights <- weights
+      }
+    }
+    # check candidates
+    if (!is.null(candidates)) {
+      if (!methods::is(candidates, "SpatRaster") & !is.vector(candidates)) {
+        stop("When the input is points, the candidates must be a numeric vector or SpatRaster object")
+      }
+      if (methods::is(candidates, "SpatRaster")) {
+        candidates_sample <- terra::extract(
+          x = candidates,
+          y = input,
+          ID = FALSE,
+          layer = 1
+        ) %>%
+          magrittr::extract2(1)
+
+        candidates <- c(1:length(input))[!is.na(candidates_sample)]
+      } else {
+        candidates <- unique(candidates)
+        candidates <- candidates[candidates <= nrow(input)]
+      }
     }
     df <- cbind(terra::crds(input), terra::values(input))
     if (is.null(ncells)) { # Use all points if ncells is NULL
@@ -192,17 +272,75 @@ sample_kmeans <- function(
     }
   }
 
-  xy <- df[, 1:2] # Extract coordinates
-
-  if (only_xy == TRUE) {
-    use_xy <- TRUE
-    df <- xy
+  # Extraction for data frame
+  if (inputisdf) {
+    if (!is.null(weights)) {
+      # check weights
+      if (!is.vector(weights)) {
+        stop("When the input is a data frame, the weights must be a numeric vector.")
+      } else {
+        if (nrow(input) != length(weights)) {
+          stop("The number of weights do not match the input data.")
+        } else {
+          input$weights <- weights
+        }
+      }
+    }
+    # check candidates
+    if (!is.null(candidates)) {
+      if (!is.vector(candidates)) {
+        stop("When the input is a data frame, the candidates must be a numeric vector.")
+      } else {
+        candidates <- unique(candidates)
+        candidates <- candidates[candidates <= nrow(input)]
+      }
+    }
+    df <- input
+    if (is.null(ncells)) { # Use all points if ncells is NULL
+      ncells <- nrow(df)
+    } else {
+      if (ncells < clusters) {
+        stop("ncells must be larger than the number of clusters")
+      }
+    }
+    if (is.null(weights)) {
+      if (ncells > nrow(df)) {
+        message("ncells is larger than the number of input rows. Using all input rows instead.")
+      } else {
+        # standard sampling
+        sampled <- sample(nrow(df),
+                          ncells,
+                          replace = FALSE
+        )
+        df <- df[sampled, ]
+      }
+    } else {
+      # weighted sampling
+      sampled <- sample(nrow(df),
+                        ncells,
+                        prob = df[, ncol(df)],
+                        replace = TRUE
+      )
+      w <- df[sampled, ncol(df)]
+      df <- df[sampled, -ncol(df)]
+    }
   }
 
-  if (use_xy == FALSE) {
-    df <- df[, -c(1:2)]
+  # Combine or separate coordinates and input variables
+  if (!is.data.frame(input)) {
+    xy <- df[, 1:2] # Extract coordinates
+
+    if (only_xy == TRUE) {
+      use_xy <- TRUE
+      df <- xy
+    }
+
+    if (use_xy == FALSE) {
+      df <- df[, -c(1:2)]
+    }
   }
 
+  # Combine feature weights for scaling
   if (!is.null(layer_weights) | !is.null(xy_weight)) {
     sds_scaler <- df %>% ncol() %>% rep(1, .)
 
@@ -411,7 +549,7 @@ sample_kmeans <- function(
   }
 
   # Mapping procedure for rasters
-  if (itisasraster) {
+  if (inputisraster) {
     # Create coordinate raster
     if (verbose == TRUE) {
       message("Producing coordinate raster.")
@@ -600,7 +738,7 @@ sample_kmeans <- function(
   }
 
   # Mapping procedure for spatial points
-  if (itispoints) {
+  if (inputispoints) {
     if (use_xy == TRUE) {
       if (only_xy == TRUE) {
         terra::values(input) <- terra::crds(input)
@@ -680,49 +818,59 @@ sample_kmeans <- function(
       dplyr::arrange(.data$ID)
   }
 
+  # "Mapping" procedure for data frame
+
+
   # Write points to file if requested
-  if (!is.null(filename_pts)) {
-    if (tools::file_ext(filename_pts) == "shp") {
-      shp <- TRUE
-    }
-  }
-
-  if (shp == TRUE | sp_pts == TRUE) {
-    points_sp <- terra::vect(out$points, geom = c("x", "y"), terra::crs(input))
-  }
-
-  if (!is.null(filename_pts)) {
-    if (verbose == TRUE) {
-      message("Writing points to file.")
+  if (!inputisdf) {
+    if (!is.null(filename_pts)) {
+      if (tools::file_ext(filename_pts) == "shp") {
+        shp <- TRUE
+      }
     }
 
-    if (shp == FALSE) {
-      do.call(
-        utils::write.table,
-        c(
-          list(
-            x = out$points,
-            file = filename_pts
-          ),
-          args_pts
+    if (shp == TRUE | sp_pts == TRUE) {
+      points_sp <- terra::vect(out$points, geom = c("x", "y"), terra::crs(input))
+    }
+
+    if (!is.null(filename_pts)) {
+      if (verbose == TRUE) {
+        message("Writing points to file.")
+      }
+
+      if (shp == FALSE) {
+        do.call(
+          utils::write.table,
+          c(
+            list(
+              x = out$points,
+              file = filename_pts
+            ),
+            args_pts
+          )
         )
-      )
-    } else {
-      do.call(
-        terra::writeVector,
-        c(
-          list(
-            x = points_sp,
-            filename = filename_pts
-          ),
-          args_pts
+      } else {
+        do.call(
+          terra::writeVector,
+          c(
+            list(
+              x = points_sp,
+              filename = filename_pts
+            ),
+            args_pts
+          )
         )
-      )
+      }
     }
+    if (sp_pts == TRUE) {
+      out$points <- points_sp
+    }
+  } else {
+    # write selected rows to file if requested?
+
   }
-  if (sp_pts == TRUE) {
-    out$points <- points_sp
-  }
+
+
 
   options(backup_options)
 
