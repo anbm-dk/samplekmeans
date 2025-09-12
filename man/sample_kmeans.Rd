@@ -13,6 +13,7 @@ sample_kmeans(
   weights = NULL,
   layer_weights = NULL,
   xy_weight = NULL,
+  candidates = NULL,
   scale = TRUE,
   pca = FALSE,
   tol_pca = 0,
@@ -42,17 +43,23 @@ sample_kmeans(
 )
 }
 \arguments{
-\item{input}{An input \code{SpatRaster} object created by package \link{terra}.}
+\item{input}{An input \code{data.frame}, or a \code{SpatRaster} or \code{SpatVector} object created by package \link{terra}. The input should contain only numeric variables for clustering.}
 
 \item{clusters}{Number of clusters.}
 
 \item{ncells}{Number of cells to extract, otherwise uses all cells.}
 
-\item{use_xy}{Add xy coordinates as variables for clustering.}
+\item{use_xy}{Should the geographic xy coordinates be used as variables for clustering?}
 
-\item{only_xy}{Use only xy coordinates.}
+\item{only_xy}{Should the algorithm Use only xy coordinates?}
 
-\item{weights}{Raster layer or numeric vector with weights between 0 and 1.}
+\item{weights}{A \code{SpatRaster} object or numeric vector with weights between 0 and 1.}
+
+\item{layer_weights}{Numeric vector with weights for each input parameter.}
+
+\item{xy_weight}{Numeric vector of weights for the x and y coordinates (repeated if length 1).}
+
+\item{candidates}{Numeric vector with indices for the points or rows that can be selected as centers for the clusters, or a \code{SpatRaster} object with a mask for the areas that can be selected.}
 
 \item{scale}{Center and scale variables.}
 

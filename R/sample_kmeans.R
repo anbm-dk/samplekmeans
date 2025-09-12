@@ -177,22 +177,30 @@ sample_kmeans <- function(
       df <- as.data.frame(input, xy = TRUE, na.rm = TRUE)
       ncells <- nrow(df)
     } else {
-      if (ncells < clusters) {
-        stop("ncells must be larger than the number of clusters")
+      if (ncells < (clusters + 2)) {
+        stop("ncells must at least be equal to the number of clusters + 2")
       }
       df <- terra::spatSample(input, ncells, xy = TRUE, as.df = TRUE)
       ncells <- nrow(df)
     }
     if (!is.null(weights)) # Weighted sampling
-      {
-        sampled <- sample(nrow(df),
+    {
+      sampled_unique <- 0
+      seed_loop <- seed
+      while (sampled_unique < (clusters + 2)) {
+        sampled <- sample(
+          nrow(df),
           ncells,
           prob = df[, ncol(df)],
           replace = TRUE
         )
-        w <- df[sampled, ncol(df)]
-        df <- df[sampled, -ncol(df)]
+
+        sampled_unique <- sampled %>% unique() %>% length()
+        seed_loop %<>% magrittr::add(1)
       }
+      w <- df[sampled, ncol(df)]
+      df <- df[sampled, -ncol(df)]
+    }
   }
 
   # Extraction for spatial points
@@ -245,8 +253,8 @@ sample_kmeans <- function(
     if (is.null(ncells)) { # Use all points if ncells is NULL
       ncells <- nrow(df)
     } else {
-      if (ncells < clusters) {
-        stop("ncells must be larger than the number of clusters")
+      if (ncells < (clusters + 2)) {
+        stop("ncells must at least be equal to the number of clusters + 2")
       }
     }
     if (is.null(weights)) {
@@ -262,11 +270,18 @@ sample_kmeans <- function(
       }
     } else {
       # weighted sampling
-      sampled <- sample(nrow(df),
-        ncells,
-        prob = df[, ncol(df)],
-        replace = TRUE
-      )
+      sampled_unique <- 0
+      seed_loop <- seed
+      while (sampled_unique < (clusters + 2)) {
+        sampled <- sample(
+          nrow(df),
+          ncells,
+          prob = df[, ncol(df)],
+          replace = TRUE
+        )
+        sampled_unique <- sampled %>% unique() %>% length()
+        seed_loop %<>% magrittr::add(1)
+      }
       w <- df[sampled, ncol(df)]
       df <- df[sampled, -ncol(df)]
     }
@@ -299,8 +314,8 @@ sample_kmeans <- function(
     if (is.null(ncells)) { # Use all points if ncells is NULL
       ncells <- nrow(df)
     } else {
-      if (ncells < clusters) {
-        stop("ncells must be larger than the number of clusters")
+      if (ncells < (clusters + 2)) {
+        stop("ncells must at least be equal to the number of clusters + 2")
       }
     }
     if (is.null(weights)) {
@@ -316,11 +331,19 @@ sample_kmeans <- function(
       }
     } else {
       # weighted sampling
-      sampled <- sample(nrow(df),
-                        ncells,
-                        prob = df[, ncol(df)],
-                        replace = TRUE
-      )
+      sampled_unique <- 0
+      seed_loop <- seed
+      while (sampled_unique < (clusters + 2)) {
+        sampled <- sample(
+          nrow(df),
+          ncells,
+          prob = df[, ncol(df)],
+          replace = TRUE
+        )
+        sampled_unique <- sampled %>% unique() %>% length()
+        seed_loop %<>% magrittr::add(1)
+      }
+
       w <- df[sampled, ncol(df)]
       df <- df[sampled, -ncol(df)]
     }
@@ -471,7 +494,10 @@ sample_kmeans <- function(
       runagain <- FALSE
     } else {
       diff_try <- clusters - n_complete
-      clusters_try %<>% magrittr::add(diff_try)
+      clusters_try %<>%
+        magrittr::add(diff_try) %>%
+        min(., nrow(df) - 2) %>%
+        max(., 1)
       seed_try %<>% magrittr::add(1)
     }
   }
