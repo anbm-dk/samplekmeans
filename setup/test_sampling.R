@@ -50,12 +50,14 @@ points(myclusters_r$points, col = "red", pch = 20)
 plot(r)
 points(myclusters_r$points, col = "red", pch = 20)
 
+
 # Test with one cluster
 
 myclusters_r <- sample_kmeans(input = r, clusters = 1, use_xy = TRUE)
 
 plot(myclusters_r$clusters)
 points(myclusters_r$points)
+
 
 # Test for points
 
@@ -77,5 +79,23 @@ myclusters_v
 plot(v2)
 points(myclusters_v$points, col = "red", pch = 20)
 
+
+# Test for data frame
+
+library(datasets)
+data(iris)
+
+print(iris)
+
+getwd() %>% paste0("/R/sample_kmeans.R") %>% source()
+
+myclusters_df <- sample_kmeans(iris[ , 1:4], pca = TRUE)
+
+myclusters_df
+
+iris %>%
+  mutate(
+    cluster = myclusters_df$clusters
+  )
 
 # END

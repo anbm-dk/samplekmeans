@@ -125,7 +125,7 @@ sample_kmeans <- function(
   }
 
   if ((inputisraster + inputispoints + inputisdf) != 1) {
-    stop("Input must be either a data frame, a SpatRaster or points.")
+    stop("Input must be either a data frame, a SpatRaster or a SpatVector with points.")
   }
 
   if (inputisdf) {
@@ -143,6 +143,9 @@ sample_kmeans <- function(
       n_vars <- terra::nlyr(input)
     }
     if (inputispoints) {
+      n_vars <- ncol(input)
+    }
+    if (inputisdf) {
       n_vars <- ncol(input)
     }
     if (use_xy) {
@@ -163,17 +166,25 @@ sample_kmeans <- function(
         }
       }
     }
+
+    # Check candidates
     if (!is.null(candidates)) {
-      if (is.vector(candidates)) {
-        stop("When input is a SpatRaster, candidates must be a SpatRaster or points.")
+      stop <- FALSE
+      if (!methods::is(candidates, "SpatRaster") & !methods::is(candidates, "SpatVector")) {
+        stop_now <- TRUE
       }
-      if (methods::is(candidates, "SpatRaster")) {
-        if (terra::compareGeom(input, candidates) == FALSE) {
-          stop("Input and candidates rasters do not match.")
+      if (methods::is(candidates, "SpatVector")) {
+        if (terra::geomtype(input) != "points") {
+          stop_now <- TRUE
         }
       }
+      if (stop_now) {
+        stop("When input is a SpatRaster, candidates must be a SpatRaster or a SpatVector with points.")
+      }
     }
-    if (is.null(ncells)) { # Use all cells if ncells is NULL
+
+    # Sampling (if applicable)
+    if (is.null(ncells)) {  # Use all cells if ncells is NULL
       df <- as.data.frame(input, xy = TRUE, na.rm = TRUE)
       ncells <- nrow(df)
     } else {
@@ -201,7 +212,42 @@ sample_kmeans <- function(
       w <- df[sampled, ncol(df)]
       df <- df[sampled, -ncol(df)]
     }
-  }
+
+    # Extract candidates (if applicable)
+    if (!is.null(candidates)) {
+      if (methods::is(candidates, "SpatRaster")) {
+        if (terra::compareGeom(input, candidates) == FALSE) {
+          stop("Input and candidates rasters do not match.")
+        } else {
+          candidates_sample <- df %>%
+            dplyr::select(x, y) %>%
+            terra::vect(geom = c("x", "y"), terra::crs(input)) %>%
+            terra::extract(
+              x = candidates,
+              y = .,
+              ID = FALSE,
+              layer = 1
+            ) %>%
+            magrittr::extract2(1)
+
+          candidates <- c(1:nrow(df))[!is.na(candidates_sample)]
+
+          candidates_df <- df[, candidates]
+        }
+      }
+      if (methods::is(candidates, "SpatVector")) {
+        candidates_df <- candidates %>%
+          terra::extract(
+            x = input,
+            y = .,
+            ID = FALSE,
+            xy = TRUE,
+            layer = 1
+          ) %>%
+          tidyr::drop_na()
+        }
+      }
+    }
 
   # Extraction for spatial points
   if (inputispoints) {
@@ -229,7 +275,8 @@ sample_kmeans <- function(
         input$weights <- weights
       }
     }
-    # check candidates
+
+    # check candidates, if input is a points dataset
     if (!is.null(candidates)) {
       if (!methods::is(candidates, "SpatRaster") & !is.vector(candidates)) {
         stop("When the input is points, the candidates must be a numeric vector or SpatRaster object")
@@ -244,11 +291,15 @@ sample_kmeans <- function(
           magrittr::extract2(1)
 
         candidates <- c(1:length(input))[!is.na(candidates_sample)]
+        candidates_df <- input[candidates, ]
       } else {
         candidates <- unique(candidates)
         candidates <- candidates[candidates <= nrow(input)]
+        candidates_df <- input[candidates, ]
       }
     }
+
+    # Sampling (if applicable)
     df <- cbind(terra::crds(input), terra::values(input))
     if (is.null(ncells)) { # Use all points if ncells is NULL
       ncells <- nrow(df)
@@ -308,8 +359,11 @@ sample_kmeans <- function(
       } else {
         candidates <- unique(candidates)
         candidates <- candidates[candidates <= nrow(input)]
+        candidates_df <- input[candidates, ]
       }
     }
+
+    # Sampling (if applicable)
     df <- input
     if (is.null(ncells)) { # Use all points if ncells is NULL
       ncells <- nrow(df)
@@ -350,7 +404,7 @@ sample_kmeans <- function(
   }
 
   # Combine or separate coordinates and input variables
-  if (!is.data.frame(input)) {
+  if (!inputisdf) {
     xy <- df[, 1:2] # Extract coordinates
 
     if (only_xy == TRUE) {
@@ -363,6 +417,7 @@ sample_kmeans <- function(
     }
   }
 
+  # Scaling and PCA
   # Combine feature weights for scaling
   if (!is.null(layer_weights) | !is.null(xy_weight)) {
     sds_scaler <- df %>% ncol() %>% rep(1, .)
@@ -378,7 +433,8 @@ sample_kmeans <- function(
     }
   }
 
-  if ( (scale == TRUE) | (exists("sds_scaler")) ) # Scaling
+  # Scaling
+  if ( (scale == TRUE) | (exists("sds_scaler")) )
     {
       if (verbose == TRUE) {
         message("Scaling input variables.")
@@ -408,8 +464,9 @@ sample_kmeans <- function(
       df %<>%
         sweep(MARGIN = 2, STATS = means, check.margin = FALSE) %>%
         sweep(MARGIN = 2, FUN = "/", STATS = sds, check.margin = FALSE)
-    }
-  if (pca == TRUE) # Principal components analysis
+  }
+  # Principal components analysis
+  if (pca == TRUE)
     {
       if (verbose == TRUE) {
         message("Conducting principal components analysis.")
@@ -430,7 +487,7 @@ sample_kmeans <- function(
 
   if (!is.data.frame(df)) {
     df %<>% as.data.frame
-  } # Make sure it's a dataframe
+  } # Make sure it's a data frame
 
   out <- list()
 
@@ -845,6 +902,75 @@ sample_kmeans <- function(
   }
 
   # "Mapping" procedure for data frame
+  if (inputisdf) {
+    # Drop weights from the input
+    if (ncol(input) > n_vars) {
+      input <- input[, c(1:n_vars)]
+    }
+
+    out$points <- NA
+
+    if (verbose == TRUE) {
+      message("Assigning clusters.")
+    }
+
+    out$clusters <- apply(
+      input,
+      1,
+      FUN = map_clusters_fun
+    ) %>% t()
+
+    # Calculate weighted distances
+    out$distances <- out$clusters[, 2] %>% unname()
+    out$clusters <- out$clusters[, 1] %>% unname()
+    if (!is.null(weights)) {
+      if (verbose == TRUE) {
+        message("Calculating weighted distances.")
+      }
+      out$distances <- out$distances / weights
+    }
+
+    # Find the cluster centers
+    if (verbose == TRUE) {
+      message("Identifying cluster centers.")
+    }
+    zs1 <- out$clusters %>%
+      unique() %>%
+      sort()
+
+    zs2 <- sapply(zs1, function(x) {
+      cl_min <- min(out$distances[out$clusters == x], na.rm = TRUE)
+      return(cl_min)
+    })
+
+    zs <- cbind(zs1, zs2)
+    s <- cbind(out$clusters, out$distances)
+
+    findpoint <- function(x) {
+      if (x %>% sum() %>% is.na()) {
+        out <- NA
+      } else {
+        ismin <- zs[as.integer(x[1]), 2] == x[2]
+        if (!ismin) {
+          out <- NA
+        } else {
+          out <- as.integer(x[1])
+        }
+      }
+      return(out)
+    }
+
+    pts <- apply(s, 1, FUN = findpoint)
+
+    out$points <- data.frame(
+      ID = pts,
+      Index = c(1:length(pts))
+    ) %>%
+      tidyr::drop_na()
+
+    out$points <- out$points[!duplicated(out$points$ID), ] %>%
+      dplyr::arrange(.data$ID)
+  }
 
 
   # Write points to file if requested
