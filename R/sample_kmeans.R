@@ -167,7 +167,8 @@ sample_kmeans <- function(
       }
     }
 
-    # Check candidates
+    # Check candidates for raster input
+    # Add warning if there is no overlap
     if (!is.null(candidates)) {
       stop <- FALSE
       if (!methods::is(candidates, "SpatRaster") & !methods::is(candidates, "SpatVector")) {
@@ -181,9 +182,12 @@ sample_kmeans <- function(
       if (stop_now) {
         stop("When input is a SpatRaster, candidates must be a SpatRaster or a SpatVector with points.")
       }
+      if (terra::compareGeom(input, candidates) == FALSE) {
+        stop("Input and candidates rasters do not match.")
+      }
     }
 
-    # Sampling (if applicable)
+    # Sampling (if applicable) for raster input
     if (is.null(ncells)) {  # Use all cells if ncells is NULL
       df <- as.data.frame(input, xy = TRUE, na.rm = TRUE)
       ncells <- nrow(df)
@@ -213,29 +217,14 @@ sample_kmeans <- function(
       df <- df[sampled, -ncol(df)]
     }
 
-    # Extract candidates (if applicable)
+    # Extract candidates (if applicable) for raster input
     if (!is.null(candidates)) {
       if (methods::is(candidates, "SpatRaster")) {
-        if (terra::compareGeom(input, candidates) == FALSE) {
-          stop("Input and candidates rasters do not match.")
-        } else {
-          candidates_sample <- df %>%
-            dplyr::select(x, y) %>%
-            terra::vect(geom = c("x", "y"), terra::crs(input)) %>%
-            terra::extract(
-              x = candidates,
-              y = .,
-              ID = FALSE,
-              layer = 1
-            ) %>%
-            magrittr::extract2(1)
-
-          candidates <- c(1:nrow(df))[!is.na(candidates_sample)]
-
-          candidates_df <- df[, candidates]
-        }
+        candidates_raster <- TRUE
       }
       if (methods::is(candidates, "SpatVector")) {
+        candidates_pts <- TRUE
+
         candidates_df <- candidates %>%
           terra::extract(
             x = input,
@@ -277,6 +266,7 @@ sample_kmeans <- function(
     }
 
     # check candidates, if input is a points dataset
+    # Add warning if there is no overlap
     if (!is.null(candidates)) {
       if (!methods::is(candidates, "SpatRaster") & !is.vector(candidates)) {
         stop("When the input is points, the candidates must be a numeric vector or SpatRaster object")
@@ -353,6 +343,7 @@ sample_kmeans <- function(
       }
     }
     # check candidates
+    # Add warning if there is no overlap
     if (!is.null(candidates)) {
       if (!is.vector(candidates)) {
         stop("When the input is a data frame, the candidates must be a numeric vector.")
@@ -772,52 +763,80 @@ sample_kmeans <- function(
       out$clusters <- terra::rast(filename_cl)
     }
 
-    # Find the cluster centers
+    # Find the cluster centers for raster input
     if (verbose == TRUE) {
       message("Identifying cluster centers.")
     }
-    zs <- terra::zonal(out$distances, out$clusters, "min", na.rm = TRUE)
-    s <- c(out$clusters, out$distances)
 
-    findpoint <- function(x) {
-      if (x %>% sum() %>% is.na()) {
-        out <- NA
+    if (is.null(candidates_pts)) {
+      # Centers for raster input, when candidates are a raster or NULL
+      if (is.null(candidates_raster)) {
+        # Without candidates raster
+        zs <- terra::zonal(out$distances, out$clusters, "min", na.rm = TRUE)
+        s <- c(out$clusters, out$distances)
+
       } else {
-        ismin <- zs[as.integer(x[1]), 2] == x[2]
-        if (!ismin) {
+        # With candidates raster
+        distmask <- terra::mask(out$distances, sum(input))
+        clustmask <- terra::mask(out$clusters, sum(input))
+
+        zs <- terra::zonal(
+          distmask,
+          clustmask,
+          "min",
+          na.rm = TRUE
+          )
+        s <- c(
+          clustmask,
+          distmask
+          )
+      }
+
+      findpoint <- function(x) {
+        if (x %>% sum() %>% is.na()) {
           out <- NA
         } else {
-          out <- as.integer(x[1])
+          ismin <- zs[as.integer(x[1]), 2] == x[2]
+          if (!ismin) {
+            out <- NA
+          } else {
+            out <- as.integer(x[1])
+          }
         }
+        return(out)
       }
-      return(out)
-    }
 
-    if (is.null(cores)) {
-      pts <- terra::app(s, fun = findpoint)
+      if (is.null(cores)) {
+        pts <- terra::app(s, fun = findpoint)
+      } else {
+        showConnections()
+
+        cl <- parallel::makeCluster(cores)
+
+        parallel::clusterExport(
+          cl,
+          "zs",
+          envir = environment()
+        )
+
+        pts <- terra::app(s, fun = findpoint, cores = cl)
+
+        parallel::stopCluster(cl)
+        foreach::registerDoSEQ()
+        rm(cl)
+      }
+
+      names(pts) <- "ID"
+
+      out$points <- as.data.frame(pts, xy = TRUE, na.rm = TRUE) %>%
+        dplyr::arrange(.data$ID)
+
+      out$points <- out$points[!duplicated(out$points$ID), ]
+
     } else {
-      showConnections()
+      # Centers for raster input, when candidates are points
 
-      cl <- parallel::makeCluster(cores)
-
-      parallel::clusterExport(cl,
-        "zs",
-        envir = environment()
-      )
-
-      pts <- terra::app(s, fun = findpoint, cores = cl)
-
-      parallel::stopCluster(cl)
-      foreach::registerDoSEQ()
-      rm(cl)
     }
-
-    names(pts) <- "ID"
-
-    out$points <- as.data.frame(pts, xy = TRUE, na.rm = TRUE) %>%
-      dplyr::arrange(.data$ID)
-
-    out$points <- out$points[!duplicated(out$points$ID), ]
   }
 
   # Mapping procedure for spatial points
