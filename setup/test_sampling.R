@@ -1,10 +1,12 @@
 # Test functions
 
-library(devtools)
+# library(devtools)
+#
+# install_github("anbm-dk/samplekmeans", force = TRUE)
+#
+# library(samplekmeans)
 
-install_github("anbm-dk/samplekmeans", force = TRUE)
-
-library(samplekmeans)
+getwd() %>% paste0("/R/sample_kmeans.R") %>% source()
 
 # Test for raster
 
@@ -51,12 +53,12 @@ plot(r)
 points(myclusters_r$points, col = "red", pch = 20)
 
 
-# Test with one cluster
-
-myclusters_r <- sample_kmeans(input = r, clusters = 1, use_xy = TRUE)
-
-plot(myclusters_r$clusters)
-points(myclusters_r$points)
+# # Test with one cluster
+#
+# myclusters_r <- sample_kmeans(input = r, clusters = 1, use_xy = TRUE)
+#
+# plot(myclusters_r$clusters)
+# points(myclusters_r$points)
 
 
 # Test for points
@@ -89,7 +91,12 @@ print(iris)
 
 getwd() %>% paste0("/R/sample_kmeans.R") %>% source()
 
-myclusters_df <- sample_kmeans(iris[ , 1:4], pca = TRUE)
+myclusters_df <- sample_kmeans(
+  iris[ , 1:4],
+  pca = TRUE
+  # ,
+  # weights = iris$Petal.Width
+  )
 
 myclusters_df
 
@@ -97,5 +104,47 @@ iris %>%
   mutate(
     cluster = myclusters_df$clusters
   )
+
+# Test candidates for raster input (candidates raster)
+
+r_cand <- myweights
+
+r_cand[r_cand < 0.3] <- NA
+
+myclusters_r_cand <- sample_kmeans(
+  input = r,
+  clusters = 20,
+  weights = myweights,
+  use_xy = TRUE,
+  # only_xy = TRUE,
+  xy_weight = c(1, 2),
+  layer_weights = 1,
+  candidates = r_cand
+)
+
+plot(r_cand)
+points(myclusters_r_cand$points, col = "red", pch = 20)
+
+plot(r_cand)
+points(myclusters_r$points, col = "red", pch = 20)
+
+# Test candidates for raster input (candidates points)
+
+getwd() %>% paste0("/R/sample_kmeans.R") %>% source()
+
+myclusters_r_cand_pts <- sample_kmeans(
+  input = r,
+  clusters = 5,
+  # weights = myweights,
+  use_xy = TRUE,
+  # only_xy = TRUE,
+  xy_weight = c(1, 2),
+  layer_weights = 1,
+  candidates = v2
+)
+
+plot(r)
+points(v2)
+points(myclusters_r_cand_pts$points, col = "red", pch = 20)
 
 # END
