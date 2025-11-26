@@ -217,7 +217,7 @@ sample_kmeans <- function(
         if (all_na) {
           stop("There os no overlap between the input and candidates rasters.")
         }
-        # When candidates are a raster, they will be used when selecting points.
+        # When candidates are a raster, they will be used as a mask when selecting points.
       }
       if (candidates_ispts) {
         candidates_df <- candidates %>%
@@ -240,7 +240,7 @@ sample_kmeans <- function(
     if (is.null(ncells)) {
       df <- as.data.frame(input, xy = TRUE, na.rm = TRUE)
       ncells <- nrow(df)
-      # Resampling for weighted sampling (if relevant)
+      # Weighted raster resampling (if relevant) when ncells is NULL
       if (!is.null(weights)) {
         sampled_unique <- 0
         seed_loop <- seed
@@ -261,6 +261,7 @@ sample_kmeans <- function(
       if (ncells < (clusters + 2)) {
         stop("ncells must at least be equal to the number of clusters + 2")
       }
+      # Weighted sampling for raster input
       if (!is.null(weights)) {
         sample_pts <- input[[terra::nlyr(input)]] %>%
           terra::mask(x = ., mask = sum(input)) %>%
@@ -269,28 +270,33 @@ sample_kmeans <- function(
             size = ncells,
             method = "weights",
             as.points = TRUE,
-            na.rm = TRUE
+            na.rm = TRUE,
+            replace = TRUE
           )
 
         sampled <- sample_pts %>%
           terra::extract(
             x = input,
             y = .,
-            ID = FALSE,
-            xy = TRUE
+            ID = FALSE
+          ) %>%
+          dplyr::bind_cols(
+            terra::crds(sample_pts),
+            .
           ) %>%
           tidyr::drop_na()
-        w <- df[sampled, ncol(df)]
-        df <- df[sampled, -ncol(df)]
+        w <- sampled[ , ncol(sampled)]
+        df <- sampled[ , -ncol(sampled)]
         ncells <- nrow(df)
       } else {
-        # Non-weighted sampling
+        # Non-weighted sampling for raster input
         df <- terra::spatSample(
           input,
           ncells,
           xy = TRUE,
           as.df = TRUE,
-          na.rm = TRUE
+          na.rm = TRUE,
+          replace = TRUE
         )
         ncells <- nrow(df)
       }
@@ -348,7 +354,7 @@ sample_kmeans <- function(
       }
     }
 
-    # Sampling (if applicable)
+    # Sampling (if applicable) for points dataset
     df <- cbind(terra::crds(input), terra::values(input))
     if (is.null(ncells)) { # Use all points if ncells is NULL
       ncells <- nrow(df)
@@ -361,7 +367,7 @@ sample_kmeans <- function(
       if (ncells > nrow(df)) {
         message("ncells is larger than the number of input points. Using all input points instead.")
       } else {
-        # standard sampling
+        # standard sampling for points dataset
         sampled <- sample(nrow(df),
           ncells,
           replace = FALSE
@@ -369,12 +375,12 @@ sample_kmeans <- function(
         df <- df[sampled, ]
       }
     } else {
-      # weighted sampling
+      # weighted sampling for points dataset
       sampled_unique <- 0
       seed_loop <- seed
       while (sampled_unique < (clusters + 2)) {
         sampled <- sample(
-          nrow(df),
+          x = nrow(df),
           ncells,
           prob = df[, ncol(df)],
           replace = TRUE
@@ -401,7 +407,7 @@ sample_kmeans <- function(
         }
       }
     }
-    # check candidates
+    # check candidates for data frame input
     # Add warning if there is no overlap (if candidates are a vector)
     if (!is.null(candidates)) {
       if (!is.vector(candidates)) {
@@ -466,6 +472,14 @@ sample_kmeans <- function(
       df <- df[, -c(1:2)]
     }
   }
+  if (!use_xy) {
+    xy_weight <- NULL
+  }
+  if (!is.data.frame(df)) {
+    df <- as.data.frame(df)
+  }
+  print(df)
+
 
   # Scaling and PCA
   # Combine feature weights for scaling

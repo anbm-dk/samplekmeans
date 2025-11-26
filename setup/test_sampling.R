@@ -6,6 +6,8 @@
 #
 # library(samplekmeans)
 
+library(magrittr)
+
 getwd() %>% paste0("/R/sample_kmeans.R") %>% source()
 
 # Test for raster
@@ -33,13 +35,16 @@ plot(myweights)
 
 library(magrittr)
 
+getwd() %>% paste0("/R/sample_kmeans.R") %>% source()
+
 myclusters_r <- sample_kmeans(
   input = r,
   clusters = 20,
-  weights = myweights,
-  use_xy = TRUE,
+  ncells = 10000,
+  # weights = myweights,
+  # use_xy = TRUE,
   # only_xy = TRUE,
-  xy_weight = c(1, 2),
+  xy_weight = c(1, 1),
   layer_weights = 1
   )
 
