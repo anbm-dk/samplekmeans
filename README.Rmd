@@ -9,6 +9,9 @@ knitr::opts_chunk$set(
   collapse = TRUE,
   comment = "#>"
 )
+
+library(terra)
+library(samplekmeans)
 ```
 
 # samplekmeans
@@ -28,4 +31,31 @@ library(devtools)
 
 install_github("anbm-dk/samplekmeans")
 ```
+
+## Usage example
+
+Load a raster:
+
+```{r, include = TRUE}
+f <- system.file("ex/elev.tif", package="terra")
+r <- rast(f)
+```
+
+Run k-means:
+
+```{r, include = TRUE}
+myclusters <- sample_kmeans(
+  input = r,
+  clusters = 3,
+  use_xy = TRUE
+  )
+
+plot(myclusters$clusters)
+points(
+  myclusters$points,
+  pch = 21,
+  bg = "white"
+  )
+```
+
 

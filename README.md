@@ -20,3 +20,31 @@ library(devtools)
 
 install_github("anbm-dk/samplekmeans")
 ```
+
+## Usage example
+
+Load a raster:
+
+``` r
+f <- system.file("ex/elev.tif", package="terra")
+r <- rast(f)
+```
+
+Run k-means:
+
+``` r
+myclusters <- sample_kmeans(
+  input = r,
+  clusters = 3,
+  use_xy = TRUE
+  )
+
+plot(myclusters$clusters)
+points(
+  myclusters$points,
+  pch = 21,
+  bg = "white"
+  )
+```
+
+![](README_files/figure-gfm/unnamed-chunk-3-1.png)<!-- -->

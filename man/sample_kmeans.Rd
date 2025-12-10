@@ -25,7 +25,6 @@ sample_kmeans(
   tol_kmeans = 1e-04,
   tol_opt = 0.3,
   seed = NULL,
-  force_seed = FALSE,
   MiniBatch = FALSE,
   batch_size = 10,
   init_frac = 1,

@@ -43,7 +43,7 @@
 #' @importFrom rlang .data
 #' @importFrom methods is
 #' @importFrom tidyr drop_na
-#' @importFrom terra nlyr spatSample compareGeom geomtype
+#' @importFrom terra nlyr spatSample compareGeom geomtype global mask spatSample extract crds values init subset app writeRaster rast zonal vect writeVector
 #' @importFrom ClusterR KMeans_rcpp MiniBatchKmeans
 #' @importFrom dplyr arrange mutate
 #' @importFrom fields rdist
@@ -69,7 +69,6 @@ sample_kmeans <- function(
     tol_kmeans = 1e-04, # See KMeans_rcpp
     tol_opt = 0.3, # See KMeans_rcpp
     seed = NULL, # See KMeans_rcpp
-    force_seed = FALSE,
     MiniBatch = FALSE, # Use MiniBatchKmeans (fast, less accurate)
     batch_size = 10, # See MiniBatchKmeans
     init_frac = 1, # See MiniBatchKmeans
@@ -478,7 +477,6 @@ sample_kmeans <- function(
   if (!is.data.frame(df)) {
     df <- as.data.frame(df)
   }
-  print(df)
 
 
   # Scaling and PCA
@@ -921,11 +919,11 @@ sample_kmeans <- function(
       names(s) <- c("clust", "dist")
 
       zs <- s %>%
-        dplyr::group_by(., clust) %>%
-        dplyr::summarise(., min = min(dist, na.rm = TRUE)) %>%
+        dplyr::group_by(., .data$clust) %>%
+        dplyr::summarise(., mindist = min(.data$dist, na.rm = TRUE)) %>%
         dplyr::ungroup(.) %>%
-        dplyr::mutate(., clust = as.integer(clust)) %>%
-        dplyr::select(., clust, min)
+        dplyr::mutate(., clust = as.integer(.data$clust)) %>%
+        dplyr::select(., .data$clust, .data$mindist)
 
       # Find points for the cluster centers
       pts <- apply(s, 1, FUN = findpoint)
