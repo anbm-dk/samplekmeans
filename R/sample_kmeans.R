@@ -2,15 +2,22 @@
 #'
 #' Produces a set of points sampled from a raster or point dataset.
 #'
-#' @param input An input `data.frame`, or a `SpatRaster` or `SpatVector` object created by package [terra]. The input should contain only numeric variables for clustering.
+#' @param input An input `data.frame`, or a `SpatRaster` or `SpatVector`
+#' object created by package [terra]. The input should contain only numeric
+#' variables for clustering.
 #' @param clusters Number of clusters.
 #' @param ncells Number of cells to extract, otherwise uses all cells.
-#' @param use_xy Should the geographic xy coordinates be used as variables for clustering?
+#' @param use_xy Should the geographic xy coordinates be used as variables for
+#' clustering?
 #' @param only_xy Should the algorithm Use only xy coordinates?
-#' @param weights A `SpatRaster` object or numeric vector with weights between 0 and 1.
+#' @param weights A `SpatRaster` object or numeric vector with weights between
+#' 0 and 1.
 #' @param layer_weights Numeric vector with weights for each input parameter.
-#' @param xy_weight Numeric vector of weights for the x and y coordinates (repeated if length 1).
-#' @param candidates Numeric vector with indices for the points or rows that can be selected as centers for the clusters, or a `SpatRaster` object with a mask for the areas that can be selected.
+#' @param xy_weight Numeric vector of weights for the x and y coordinates
+#' (repeated if length 1).
+#' @param candidates Numeric vector with indices for the points or rows that can
+#' be selected as centers for the clusters, or a `SpatRaster` object with a
+#' mask for the areas that can be selected.
 #' @param scale Center and scale variables.
 #' @param pca Use principal component analysis on variables.
 #' @param tol_pca Tolerance for pca (remove PCs below threshold).
@@ -26,7 +33,8 @@
 #' @param batch_size See MiniBatchKmeans.
 #' @param init_frac See MiniBatchKmeans.
 #' @param early_stop See MiniBatchKmeans.
-#' @param filename_cl File names for rasters with clusters (1) and distances (2).
+#' @param filename_cl File names for rasters with clusters (1) and distances
+#' (2).
 #' @param args_cl List with arguments for writing raster.
 #' @param filename_d File name for distance rasters.
 #' @param args_d arguments for writing distance rasters.
@@ -43,7 +51,9 @@
 #' @importFrom rlang .data
 #' @importFrom methods is
 #' @importFrom tidyr drop_na
-#' @importFrom terra nlyr spatSample compareGeom geomtype global mask spatSample extract crds values init subset app writeRaster rast zonal vect writeVector
+#' @importFrom terra nlyr spatSample compareGeom geomtype global mask
+#'   spatSample extract crds values init subset app writeRaster rast zonal vect
+#'   writeVector
 #' @importFrom ClusterR KMeans_rcpp MiniBatchKmeans
 #' @importFrom dplyr arrange mutate
 #' @importFrom fields rdist
@@ -54,9 +64,12 @@ sample_kmeans <- function(
     ncells = NULL,
     use_xy = FALSE, # Add xy coordinates as variables for clustering
     only_xy = FALSE, # Use only xy coordinates
-    weights = NULL, # Raster layer or numeric vector with weights between 0 and 1
-    layer_weights = NULL,  # Numeric vector with weights for each input parameter.
-    xy_weight = NULL,  # Numeric vector of weights for the x and y coordinates (repeated if length 1)
+    weights = NULL, # Raster layer or numeric vector with weights between 0 and
+    # 1
+    layer_weights = NULL,  # Numeric vector with weights for each input
+    # parameter.
+    xy_weight = NULL,  # Numeric vector of weights for the x and y coordinates
+    # (repeated if length 1)
     candidates = NULL,
     scale = TRUE, # Center and scale variables
     pca = FALSE, # Use principal component analysis on variables
@@ -73,7 +86,8 @@ sample_kmeans <- function(
     batch_size = 10, # See MiniBatchKmeans
     init_frac = 1, # See MiniBatchKmeans
     early_stop = 10, # See MiniBatchKmeans
-    filename_cl = NULL, # File names for rasters with clusters (1) and distances (2)
+    filename_cl = NULL, # File names for rasters with clusters (1) and
+    # distances (2)
     args_cl = NULL, # List with arguments for writing raster
     filename_d = NULL, # Filename for output distances
     args_d = NULL, # Arguments for writing output distances
@@ -87,7 +101,8 @@ sample_kmeans <- function(
   . <- NULL # To avoid warnings in the package check.
 
   backup_options <- options()
-  options(error = traceback) # Did this make it work? Find out how to reset options
+  options(error = traceback) # Did this make it work?
+  # Find out how to reset options
 
   if (is.null(input) & is.null(weights)) {
     stop("No input data.")
@@ -121,7 +136,9 @@ sample_kmeans <- function(
     inputisdf <- is.data.frame(input)
   }
   if ((inputisraster + inputispoints + inputisdf) != 1) {
-    stop("Input must be either a data frame, a SpatRaster or a SpatVector with points.")
+    stop(
+      "Input must be either a data frame, a SpatRaster or a SpatVector with points."
+    )
   }
   if (inputisdf) {
     only_xy <- FALSE
