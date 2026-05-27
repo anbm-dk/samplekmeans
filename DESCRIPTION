@@ -5,7 +5,6 @@ Description: Functions to sample datasets based on the k-means algorithm.
 License: GPL (>= 3)
 Encoding: UTF-8
 Roxygen: list(markdown = TRUE)
-RoxygenNote: 7.3.1
 URL: https://github.com/anbm-dk/samplekmeans
 BugReports: https://github.com/anbm-dk/samplekmeans/issues
 Imports: 
@@ -24,3 +23,4 @@ Imports:
 Authors@R: 
     person("Anders Bjørn", "Møller", , "anbm@agro.au.dk", role = c("aut", "cre"),
            comment = c(ORCID = "0000-0002-2737-5780"))
+Config/roxygen2/version: 8.0.0

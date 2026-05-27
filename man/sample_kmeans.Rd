@@ -42,7 +42,7 @@ sample_kmeans(
 )
 }
 \arguments{
-\item{input}{An input \code{data.frame}, or a \code{SpatRaster} or \code{SpatVector} object created by package \link{terra}. The input should contain only numeric variables for clustering.}
+\item{input}{An input \code{data.frame}, or a \code{SpatRaster} or \code{SpatVector} object created by package \link[terra:terra]{terra}. The input should contain only numeric variables for clustering.}
 
 \item{clusters}{Number of clusters.}
 
