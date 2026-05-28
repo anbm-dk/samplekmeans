@@ -58,44 +58,44 @@
 #' @importFrom fields rdist
 
 sample_kmeans <- function(
-    input = NULL,
-    clusters = 3,
-    ncells = NULL,
-    use_xy = FALSE, # Add xy coordinates as variables for clustering
-    only_xy = FALSE, # Use only xy coordinates
-    weights = NULL, # Raster layer or numeric vector with weights between 0 and
-    # 1
-    layer_weights = NULL,  # Numeric vector with weights for each input
-    # parameter.
-    xy_weight = NULL,  # Numeric vector of weights for the x and y coordinates
-    # (repeated if length 1)
-    candidates = NULL,
-    scale = TRUE, # Center and scale variables
-    pca = FALSE, # Use principal component analysis on variables
-    tol_pca = 0, # Tolerance for pca (remove PCs below threshold)
-    n_pcs = NULL, # Maximum number of principal components
-    num_init = 1, # See KMeans_rcpp
-    max_iters = 10, # See KMeans_rcpp
-    initializer = NULL, # See KMeans_rcpp
-    CENTROIDS = NULL, # See KMeans_rcpp
-    tol_kmeans = 1e-04, # See KMeans_rcpp
-    tol_opt = 0.3, # See KMeans_rcpp
-    seed = NULL, # See KMeans_rcpp
-    MiniBatch = FALSE, # Use MiniBatchKmeans (fast, less accurate)
-    batch_size = 10, # See MiniBatchKmeans
-    init_frac = 1, # See MiniBatchKmeans
-    early_stop = 10, # See MiniBatchKmeans
-    filename_cl = NULL, # File names for rasters with clusters (1) and
-    # distances (2)
-    args_cl = NULL, # List with arguments for writing raster
-    filename_d = NULL, # Filename for output distances
-    args_d = NULL, # Arguments for writing output distances
-    sp_pts = FALSE, # Output locations as spatial points
-    filename_pts = NULL, # Filename for output locations
-    shp = FALSE, # Write output locations as a shapefile
-    args_pts = NULL, # Arguments for writing output pointsx
-    cores = NULL, # Number of cpu cores to use
-    verbose = FALSE # Print messages during processing
+  input = NULL,
+  clusters = 3,
+  ncells = NULL,
+  use_xy = FALSE, # Add xy coordinates as variables for clustering
+  only_xy = FALSE, # Use only xy coordinates
+  weights = NULL, # Raster layer or numeric vector with weights between 0 and
+  # 1
+  layer_weights = NULL, # Numeric vector with weights for each input
+  # parameter.
+  xy_weight = NULL, # Numeric vector of weights for the x and y coordinates
+  # (repeated if length 1)
+  candidates = NULL,
+  scale = TRUE, # Center and scale variables
+  pca = FALSE, # Use principal component analysis on variables
+  tol_pca = 0, # Tolerance for pca (remove PCs below threshold)
+  n_pcs = NULL, # Maximum number of principal components
+  num_init = 1, # See KMeans_rcpp
+  max_iters = 10, # See KMeans_rcpp
+  initializer = NULL, # See KMeans_rcpp
+  CENTROIDS = NULL, # See KMeans_rcpp # nolint: object_name_linter.
+  tol_kmeans = 1e-04, # See KMeans_rcpp
+  tol_opt = 0.3, # See KMeans_rcpp
+  seed = NULL, # See KMeans_rcpp
+  mini_batch = FALSE, # Use MiniBatchKmeans (fast, less accurate)
+  batch_size = 10, # See MiniBatchKmeans
+  init_frac = 1, # See MiniBatchKmeans
+  early_stop = 10, # See MiniBatchKmeans
+  filename_cl = NULL, # File names for rasters with clusters (1) and
+  # distances (2)
+  args_cl = NULL, # List with arguments for writing raster
+  filename_d = NULL, # Filename for output distances
+  args_d = NULL, # Arguments for writing output distances
+  sp_pts = FALSE, # Output locations as spatial points
+  filename_pts = NULL, # Filename for output locations
+  shp = FALSE, # Write output locations as a shapefile
+  args_pts = NULL, # Arguments for writing output pointsx
+  cores = NULL, # Number of cpu cores to use
+  verbose = FALSE # Print messages during processing
 ) {
   . <- NULL # To avoid warnings in the package check.
 
@@ -125,7 +125,7 @@ sample_kmeans <- function(
   # Identify input
   inputisraster <- methods::is(input, "SpatRaster")
   inputispoints <- FALSE
-  inputisdf     <- FALSE
+  inputisdf <- FALSE
   if (methods::is(input, "SpatVector")) {
     if (terra::geomtype(input) == "points") {
       inputispoints <- TRUE
@@ -166,9 +166,9 @@ sample_kmeans <- function(
 
   # Identify candidates
   candidates_israster <- FALSE
-  candidates_ispts    <- FALSE
-  candidates_isdf     <- FALSE
-  candidates_index    <- FALSE
+  candidates_ispts <- FALSE
+  candidates_isdf <- FALSE
+  candidates_index <- FALSE
   if (!is.null(candidates)) {
     if (methods::is(candidates, "SpatRaster")) {
       candidates_israster <- TRUE
@@ -182,11 +182,11 @@ sample_kmeans <- function(
       }
     }
     if (!candidates_israster && !candidates_ispts) {
-      candidates_isdf  <- is.data.frame(candidates)
+      candidates_isdf <- is.data.frame(candidates)
     }
     if (!candidates_isdf) {
       if (is.vector(candidates) && is.integer(candidates)) {
-        candidates_index  <- TRUE
+        candidates_index <- TRUE
       }
     }
   }
@@ -245,12 +245,14 @@ sample_kmeans <- function(
       }
       if (candidates_ispts) {
         candidates_df <- candidates |>
-          (\(y) terra::extract(
-            x = input,
-            y = y,
-            ID = FALSE,
-            xy = TRUE
-          ))() |>
+          (\(y) {
+            terra::extract(
+              x = input,
+              y = y,
+              ID = FALSE,
+              xy = TRUE
+            )
+          })() |>
           tidyr::drop_na()
 
         if (nrow(candidates_df) == 0) {
@@ -278,10 +280,11 @@ sample_kmeans <- function(
             prob = df[, ncol(df)],
             replace = TRUE
           )
-          sampled_unique <- sampled |> unique() |> length()
+          sampled_unique <- sampled |>
+            unique() |>
+            length()
           seed_loop <- seed_loop + 1
         }
-        w <- df[sampled, ncol(df)]
         df <- df[sampled, -ncol(df)]
       }
     } else {
@@ -300,15 +303,13 @@ sample_kmeans <- function(
             replace = TRUE
           )
 
-        sampled <- sample_pts |>
-          terra::extract(
-            x = input,
-            y = _,
-            ID = FALSE
-          ) |>
+        sampled <- terra::extract(
+          x = input,
+          y = sample_pts,
+          ID = FALSE
+        ) |>
           (\(x) dplyr::bind_cols(terra::crds(sample_pts), x))() |>
           tidyr::drop_na()
-        w <- sampled[, ncol(sampled)]
         df <- sampled[, -ncol(sampled)]
         ncells <- nrow(df)
       } else {
@@ -331,8 +332,10 @@ sample_kmeans <- function(
     if (!is.null(weights)) {
       # check weights
       if (!methods::is(weights, "SpatRaster") && !is.vector(weights)) {
-        stop("When the input is points, the weights must be a ",
-             "numeric vector or a SpatRaster object")
+        stop(
+          "When the input is points, the weights must be a ",
+          "numeric vector or a SpatRaster object"
+        )
       }
       if (is.vector(weights)) {
         if (length(input) != length(weights)) {
@@ -358,8 +361,10 @@ sample_kmeans <- function(
     # Add warning if there is no overlap
     if (!is.null(candidates)) {
       if (!candidates_israster && !candidates_index) {
-        stop("When the input is points, the candidates must be a ",
-             "numeric vector or SpatRaster object")
+        stop(
+          "When the input is points, the candidates must be a ",
+          "numeric vector or SpatRaster object"
+        )
       }
       if (methods::is(candidates, "SpatRaster")) {
         candidates_sample <- terra::extract(
@@ -390,8 +395,10 @@ sample_kmeans <- function(
     }
     if (is.null(weights)) {
       if (ncells > nrow(df)) {
-        message("ncells is larger than the number of input points. ",
-                "Using all input points instead.")
+        message(
+          "ncells is larger than the number of input points. ",
+          "Using all input points instead."
+        )
       } else {
         # standard sampling for points dataset
         sampled <- sample(nrow(df),
@@ -411,10 +418,11 @@ sample_kmeans <- function(
           prob = df[, ncol(df)],
           replace = TRUE
         )
-        sampled_unique <- sampled |> unique() |> length()
+        sampled_unique <- sampled |>
+          unique() |>
+          length()
         seed_loop <- seed_loop + 1
       }
-      w <- df[sampled, ncol(df)]
       df <- df[sampled, -ncol(df)]
     }
   }
@@ -424,8 +432,10 @@ sample_kmeans <- function(
     if (!is.null(weights)) {
       # check weights
       if (!is.vector(weights)) {
-        stop("When the input is a data frame, the weights must be a ",
-             "numeric vector.")
+        stop(
+          "When the input is a data frame, the weights must be a ",
+          "numeric vector."
+        )
       } else {
         if (nrow(input) != length(weights)) {
           stop("The number of weights do not match the input data.")
@@ -438,8 +448,10 @@ sample_kmeans <- function(
     # Add warning if there is no overlap (if candidates are a vector)
     if (!is.null(candidates)) {
       if (!is.vector(candidates)) {
-        stop("When the input is a data frame, the candidates must be ",
-             "a numeric vector.")
+        stop(
+          "When the input is a data frame, the candidates must be ",
+          "a numeric vector."
+        )
       } else {
         candidates <- unique(candidates)
         candidates <- candidates[candidates <= nrow(input)]
@@ -458,8 +470,10 @@ sample_kmeans <- function(
     }
     if (is.null(weights)) {
       if (ncells > nrow(df)) {
-        message("ncells is larger than the number of input rows. ",
-                "Using all input rows instead.")
+        message(
+          "ncells is larger than the number of input rows. ",
+          "Using all input rows instead."
+        )
       } else {
         # standard sampling
         sampled <- sample(
@@ -480,11 +494,12 @@ sample_kmeans <- function(
           prob = df[, ncol(df)],
           replace = TRUE
         )
-        sampled_unique <- sampled |> unique() |> length()
+        sampled_unique <- sampled |>
+          unique() |>
+          length()
         seed_loop <- seed_loop + 1
       }
 
-      w <- df[sampled, ncol(df)]
       df <- df[sampled, -ncol(df)]
     }
   }
@@ -513,7 +528,9 @@ sample_kmeans <- function(
   # Scaling and PCA
   # Combine feature weights for scaling
   if (!is.null(layer_weights) || !is.null(xy_weight)) {
-    sds_scaler <- df |> ncol() |> rep(1, .)
+    sds_scaler <- df |>
+      ncol() |>
+      rep(1, .)
 
     if ((!is.null(xy_weight)) && (use_xy == TRUE)) {
       sds_scaler[1:2] <- xy_weight
@@ -535,27 +552,29 @@ sample_kmeans <- function(
       df <- as.data.frame(df)
     }
     means <- apply(df, 2, mean)
-      if (scale == TRUE) {
-        sds <- apply(df, 2, sd)
-        if (use_xy == TRUE) {
-          sds[1:2] <- max(sds[1:2])
-        }
-        sds[sds == 0] <- 1
-      } else {
-        sds <- df |> ncol() |> rep(1, .)
-        scale <- TRUE
+    if (scale == TRUE) {
+      sds <- apply(df, 2, sd)
+      if (use_xy == TRUE) {
+        sds[1:2] <- max(sds[1:2])
       }
-      if (exists("sds_scaler")) {
-        sds <- sds / sds_scaler
-      }
-      if (verbose == TRUE) {
-        scaling <- rbind(means, sds)
-        rownames(scaling) <- c("Mean", "SD")
-        print(scaling)
-      }
-      df <- df |>
-        sweep(MARGIN = 2, STATS = means, check.margin = FALSE) |>
-        sweep(MARGIN = 2, FUN = "/", STATS = sds, check.margin = FALSE)
+      sds[sds == 0] <- 1
+    } else {
+      sds <- df |>
+        ncol() |>
+        rep(1, .)
+      scale <- TRUE
+    }
+    if (exists("sds_scaler")) {
+      sds <- sds / sds_scaler
+    }
+    if (verbose == TRUE) {
+      scaling <- rbind(means, sds)
+      rownames(scaling) <- c("Mean", "SD")
+      print(scaling)
+    }
+    df <- df |>
+      sweep(MARGIN = 2, STATS = means, check.margin = FALSE) |>
+      sweep(MARGIN = 2, FUN = "/", STATS = sds, check.margin = FALSE)
   }
   # Principal components analysis
   if (pca == TRUE) {
@@ -567,14 +586,14 @@ sample_kmeans <- function(
       n_pcs <- ncol(df)
     }
     pcs <- stats::prcomp(
-        df,
-        scale. = FALSE,
-        tol = tol_pca,
-        retx = TRUE,
-        rank. = n_pcs
-      )
-      df <- pcs$x
-    }
+      df,
+      scale. = FALSE,
+      tol = tol_pca,
+      retx = TRUE,
+      rank. = n_pcs
+    )
+    df <- pcs$x
+  }
 
   if (!is.data.frame(df)) {
     df <- as.data.frame(df)
@@ -602,7 +621,7 @@ sample_kmeans <- function(
   while (runagain) {
     set.seed(seed_try)
 
-    if (MiniBatch == FALSE) {
+    if (mini_batch == FALSE) {
       myclusters <- ClusterR::KMeans_rcpp(
         df,
         clusters = clusters_try,
@@ -682,7 +701,7 @@ sample_kmeans <- function(
   if (pca == TRUE && scale == FALSE) {
     map_clusters_fun <- function(x) {
       if (x |> sum() |> is.na()) {
-        out <- c(NA, NA)
+        c(NA, NA)
       } else {
         x <- x |>
           matrix(1) |>
@@ -691,42 +710,38 @@ sample_kmeans <- function(
         dist <- x |>
           stats::predict(pcs, newdata = x) |>
           fields::rdist(mycentroids)
-        out <- c(which.min(dist), min(dist, na.rm = TRUE))
+        c(which.min(dist), min(dist, na.rm = TRUE))
       }
-      return(out)
     }
   }
   if (pca == TRUE && scale == TRUE) {
     map_clusters_fun <- function(x) {
       if (x |> sum() |> is.na()) {
-        out <- c(NA, NA)
+        c(NA, NA)
       } else {
         x <- x |>
           (\(v) (v - means) / sds)() |>
           matrix(1) |>
           data.frame()
         colnames(x) <- pcs$rotation |> rownames()
-        dist <- x |>
-          stats::predict(pcs, newdata = _) |>
+        dist <- stats::predict(pcs, newdata = x) |>
           fields::rdist(mycentroids)
-        out <- c(which.min(dist), min(dist, na.rm = TRUE))
+        c(which.min(dist), min(dist, na.rm = TRUE))
       }
-      return(out)
     }
   }
   # Function to find cluster centers
   findpoint <- function(x) {
     if (x |> sum() |> is.na()) {
-      out <- NA
+      NA
     } else {
       ismin <- zs[as.integer(x[1]), 2] == x[2]
       if (!ismin) {
-        out <- NA
+        NA
       } else {
-        out <- as.integer(x[1])
+        as.integer(x[1])
       }
     }
-    return(out)
   }
 
   # Mapping procedure for rasters
@@ -806,15 +821,14 @@ sample_kmeans <- function(
       s <- c(out$distances, weights)
       calc_wdist <- function(x) {
         if (x |> sum() |> is.na()) {
-          out <- NA
+          NA
         } else {
           if (x[2] == 0) {
-            out <- NA
+            NA
           } else {
-            out <- x[1] / x[2]
+            x[1] / x[2]
           }
         }
-        return(out)
       }
 
       if (is.null(cores)) {
@@ -925,18 +939,18 @@ sample_kmeans <- function(
         dplyr::arrange(.data$ID)
 
       out$points <- out$points[!duplicated(out$points$ID), ]
-
-
     } else {
       # Centers for raster input, when candidates are points
       # Extract clusters and distances for the candidate point
       s <- candidates |>
-        (\(y) terra::extract(
-          x = s,
-          y = y,
-          ID = FALSE,
-          xy = FALSE
-        ))()
+        (\(y) {
+          terra::extract(
+            x = s,
+            y = y,
+            ID = FALSE,
+            xy = FALSE
+          )
+        })()
 
       names(s) <- c("clust", "dist")
 
@@ -1009,8 +1023,7 @@ sample_kmeans <- function(
       sort()
 
     zs2 <- sapply(zs1, function(x) {
-      cl_min <- min(out$distances[out$clusters == x], na.rm = TRUE)
-      return(cl_min)
+      min(out$distances[out$clusters == x], na.rm = TRUE)
     })
 
     zs <- cbind(zs1, zs2)
@@ -1068,8 +1081,7 @@ sample_kmeans <- function(
       sort()
 
     zs2 <- sapply(zs1, function(x) {
-      cl_min <- min(out$distances[out$clusters == x], na.rm = TRUE)
-      return(cl_min)
+      min(out$distances[out$clusters == x], na.rm = TRUE)
     })
 
     zs <- cbind(zs1, zs2)
@@ -1138,14 +1150,10 @@ sample_kmeans <- function(
     }
   } else {
     # write selected rows to file if requested?
-
   }
 
 
-
   options(backup_options)
-
-  return(out)
 }
 
 # END
