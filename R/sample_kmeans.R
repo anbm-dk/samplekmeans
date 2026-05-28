@@ -97,7 +97,6 @@ sample_kmeans <- function(
   cores = NULL, # Number of cpu cores to use
   verbose = FALSE # Print messages during processing
 ) {
-  . <- NULL # To avoid warnings in the package check.
 
   backup_options <- options()
   options(error = traceback) # Did this make it work?
@@ -528,9 +527,7 @@ sample_kmeans <- function(
   # Scaling and PCA
   # Combine feature weights for scaling
   if (!is.null(layer_weights) || !is.null(xy_weight)) {
-    sds_scaler <- df |>
-      ncol() |>
-      rep(1, .)
+    sds_scaler <- rep(1, ncol(df))
 
     if ((!is.null(xy_weight)) && (use_xy == TRUE)) {
       sds_scaler[1:2] <- xy_weight
@@ -559,9 +556,7 @@ sample_kmeans <- function(
       }
       sds[sds == 0] <- 1
     } else {
-      sds <- df |>
-        ncol() |>
-        rep(1, .)
+      sds <- rep(1, ncol(df))
       scale <- TRUE
     }
     if (exists("sds_scaler")) {

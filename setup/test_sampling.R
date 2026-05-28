@@ -12,12 +12,12 @@ source(paste0(getwd(), "/R/sample_kmeans.R"))
 
 library(terra)
 
-f <- system.file("ex/elev.tif", package="terra")
+f <- system.file("ex/elev.tif", package = "terra")
 r <- rast(f)
 
 plot(r)
 
-myweights <- r / unlist(global(r, "max", na.rm=TRUE))
+myweights <- r / unlist(global(r, "max", na.rm = TRUE))
 
 myweights <- myweights^2
 
@@ -42,7 +42,7 @@ myclusters_r <- sample_kmeans(
   # only_xy = TRUE,
   xy_weight = c(1, 1),
   layer_weights = 1
-  )
+)
 
 plot(myclusters_r$clusters)
 points(myclusters_r$points, col = "red", pch = 20)
@@ -64,7 +64,7 @@ points(myclusters_r$points, col = "red", pch = 20)
 
 # Test for points
 
-f <- system.file("ex/lux.shp", package="terra")
+f <- system.file("ex/lux.shp", package = "terra")
 f
 v <- vect(f)
 v
@@ -95,11 +95,11 @@ print(iris)
 source(paste0(getwd(), "/R/sample_kmeans.R"))
 
 myclusters_df <- sample_kmeans(
-  iris[ , 1:4],
+  iris[, 1:4],
   pca = TRUE
   # ,
   # weights = iris$Petal.Width
-  )
+)
 
 myclusters_df
 
