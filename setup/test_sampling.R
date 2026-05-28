@@ -6,9 +6,7 @@
 #
 # library(samplekmeans)
 
-library(magrittr)
-
-getwd() %>% paste0("/R/sample_kmeans.R") %>% source()
+source(paste0(getwd(), "/R/sample_kmeans.R"))
 
 # Test for raster
 
@@ -30,12 +28,10 @@ plot(myweights)
 # 4: .local(x, ...)
 # 3: terra::app(input, fun = map_clusters_fun)
 
-# Error in df %<>% as.data.frame : could not find function "%<>%"
+# Previous error caused by non-native pipe operators has been resolved.
 # Error: [app] the number of values returned by 'fun' is not appropriate
 
-library(magrittr)
-
-getwd() %>% paste0("/R/sample_kmeans.R") %>% source()
+source(paste0(getwd(), "/R/sample_kmeans.R"))
 
 myclusters_r <- sample_kmeans(
   input = r,
@@ -75,9 +71,11 @@ v
 
 library(tidyterra)
 
-v2 <- v %>% centroids() %>% select(c("AREA",   "POP"))
+v2 <- v |>
+  centroids() |>
+  select(c("AREA", "POP"))
 
-getwd() %>% paste0("/R/sample_kmeans.R") %>% source()
+source(paste0(getwd(), "/R/sample_kmeans.R"))
 
 myclusters_v <- sample_kmeans(v2, use_xy = TRUE)
 
@@ -94,7 +92,7 @@ data(iris)
 
 print(iris)
 
-getwd() %>% paste0("/R/sample_kmeans.R") %>% source()
+source(paste0(getwd(), "/R/sample_kmeans.R"))
 
 myclusters_df <- sample_kmeans(
   iris[ , 1:4],
@@ -105,7 +103,7 @@ myclusters_df <- sample_kmeans(
 
 myclusters_df
 
-iris %>%
+iris |>
   mutate(
     cluster = myclusters_df$clusters
   )
@@ -135,7 +133,7 @@ points(myclusters_r$points, col = "red", pch = 20)
 
 # Test candidates for raster input (candidates points)
 
-getwd() %>% paste0("/R/sample_kmeans.R") %>% source()
+source(paste0(getwd(), "/R/sample_kmeans.R"))
 
 myclusters_r_cand_pts <- sample_kmeans(
   input = r,

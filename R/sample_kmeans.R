@@ -47,7 +47,6 @@
 #' @export
 #' @importFrom methods is
 #' @importFrom stats  complete.cases prcomp predict sd
-#' @importFrom magrittr %<>%
 #' @importFrom rlang .data
 #' @importFrom methods is
 #' @importFrom tidyr drop_na
@@ -104,7 +103,7 @@ sample_kmeans <- function(
   options(error = traceback) # Did this make it work?
   # Find out how to reset options
 
-  if (is.null(input) & is.null(weights)) {
+  if (is.null(input) && is.null(weights)) {
     stop("No input data.")
   }
 
@@ -112,7 +111,7 @@ sample_kmeans <- function(
     message("Preparing input data.")
   }
 
-  if (is.null(input) & !is.null(weights)) {
+  if (is.null(input) && !is.null(weights)) {
     if (is.vector(weights)) {
       message("No input variables. Using weights as an input variable.")
       input <- data.frame(w = weights)
@@ -132,12 +131,13 @@ sample_kmeans <- function(
       inputispoints <- TRUE
     }
   }
-  if (!inputisraster & !inputispoints) {
+  if (!inputisraster && !inputispoints) {
     inputisdf <- is.data.frame(input)
   }
   if ((inputisraster + inputispoints + inputisdf) != 1) {
     stop(
-      "Input must be either a data frame, a SpatRaster or a SpatVector with points."
+      "Input must be either a data frame, a SpatRaster or a ",
+      "SpatVector with points."
     )
   }
   if (inputisdf) {
@@ -181,11 +181,11 @@ sample_kmeans <- function(
         candidates_ispts <- TRUE
       }
     }
-    if (!candidates_israster & !candidates_ispts) {
+    if (!candidates_israster && !candidates_ispts) {
       candidates_isdf  <- is.data.frame(candidates)
     }
     if (!candidates_isdf) {
-      if (is.vector(candidates) & is.integer(candidates)) {
+      if (is.vector(candidates) && is.integer(candidates)) {
         candidates_index  <- TRUE
       }
     }
@@ -202,12 +202,13 @@ sample_kmeans <- function(
           stop("Input and weights rasters do not match.")
         } else {
           input <- c(input, weights)
-          all_na <- input %>%
-            sum() %>%
-            terra::global(., "anynotNA") %>%
-            unlist() %>%
-            unname() %>%
-            magrittr::not(.)
+          all_na <- !(
+            input |>
+              sum() |>
+              terra::global("anynotNA") |>
+              unlist() |>
+              unname()
+          )
           if (all_na) {
             stop("There os no overlap between the input and weights rasters.")
           }
@@ -217,36 +218,46 @@ sample_kmeans <- function(
 
     # Check candidates for raster input
     if (!is.null(candidates)) {
-      if (!candidates_israster & !candidates_ispts) {
-        stop("When input is a SpatRaster, candidates must be a SpatRaster or a SpatVector with points.")
+      if (!candidates_israster && !candidates_ispts) {
+        stop(
+          "When input is a SpatRaster, candidates must be a ",
+          "SpatRaster or a SpatVector with points."
+        )
       }
       if (candidates_israster) {
         if (terra::compareGeom(input, candidates) == FALSE) {
           stop("Input and candidates rasters do not match.")
         }
-        all_na <- c(input, candidates) %>%
-          sum() %>%
-          terra::global(., "anynotNA") %>%
-          unlist() %>%
-          unname() %>%
-          magrittr::not(.)
+        all_na <- !(
+          c(input, candidates) |>
+            sum() |>
+            terra::global("anynotNA") |>
+            unlist() |>
+            unname()
+        )
         if (all_na) {
-          stop("There os no overlap between the input and candidates rasters.")
+          stop(
+            "There os no overlap between the input and candidates rasters."
+          )
         }
-        # When candidates are a raster, they will be used as a mask when selecting points.
+        # When candidates are a raster, they will be used as a mask when
+        # selecting points.
       }
       if (candidates_ispts) {
-        candidates_df <- candidates %>%
-          terra::extract(
+        candidates_df <- candidates |>
+          (\(y) terra::extract(
             x = input,
-            y = .,
+            y = y,
             ID = FALSE,
             xy = TRUE
-          ) %>%
+          ))() |>
           tidyr::drop_na()
 
         if (nrow(candidates_df) == 0) {
-          stop("There os no overlap between the input rasters and the candidates points.")
+          stop(
+            "There os no overlap between the input rasters and the ",
+            "candidates points."
+          )
         }
       }
     }
@@ -267,8 +278,8 @@ sample_kmeans <- function(
             prob = df[, ncol(df)],
             replace = TRUE
           )
-          sampled_unique <- sampled %>% unique() %>% length()
-          seed_loop %<>% magrittr::add(1)
+          sampled_unique <- sampled |> unique() |> length()
+          seed_loop <- seed_loop + 1
         }
         w <- df[sampled, ncol(df)]
         df <- df[sampled, -ncol(df)]
@@ -279,10 +290,9 @@ sample_kmeans <- function(
       }
       # Weighted sampling for raster input
       if (!is.null(weights)) {
-        sample_pts <- input[[terra::nlyr(input)]] %>%
-          terra::mask(x = ., mask = sum(input)) %>%
+        sample_pts <- input[[terra::nlyr(input)]] |>
+          terra::mask(mask = sum(input)) |>
           terra::spatSample(
-            x = .,
             size = ncells,
             method = "weights",
             as.points = TRUE,
@@ -290,19 +300,16 @@ sample_kmeans <- function(
             replace = TRUE
           )
 
-        sampled <- sample_pts %>%
+        sampled <- sample_pts |>
           terra::extract(
             x = input,
-            y = .,
+            y = _,
             ID = FALSE
-          ) %>%
-          dplyr::bind_cols(
-            terra::crds(sample_pts),
-            .
-          ) %>%
+          ) |>
+          (\(x) dplyr::bind_cols(terra::crds(sample_pts), x))() |>
           tidyr::drop_na()
-        w <- sampled[ , ncol(sampled)]
-        df <- sampled[ , -ncol(sampled)]
+        w <- sampled[, ncol(sampled)]
+        df <- sampled[, -ncol(sampled)]
         ncells <- nrow(df)
       } else {
         # Non-weighted sampling for raster input
@@ -323,8 +330,9 @@ sample_kmeans <- function(
   if (inputispoints) {
     if (!is.null(weights)) {
       # check weights
-      if (!methods::is(weights, "SpatRaster") & !is.vector(weights)) {
-        stop("When the input is points, the weights must be a numeric vector or a SpatRaster object")
+      if (!methods::is(weights, "SpatRaster") && !is.vector(weights)) {
+        stop("When the input is points, the weights must be a ",
+             "numeric vector or a SpatRaster object")
       }
       if (is.vector(weights)) {
         if (length(input) != length(weights)) {
@@ -339,8 +347,8 @@ sample_kmeans <- function(
           y = input,
           ID = FALSE,
           layer = 1
-        ) %>%
-          magrittr::extract2(1)
+        ) |>
+          (\(x) x[[1]])()
         weights <- weights_sample
         input$weights <- weights
       }
@@ -349,8 +357,9 @@ sample_kmeans <- function(
     # check candidates, if input is a points data set
     # Add warning if there is no overlap
     if (!is.null(candidates)) {
-      if (!candidates_israster & !candidates_index) {
-        stop("When the input is points, the candidates must be a numeric vector or SpatRaster object")
+      if (!candidates_israster && !candidates_index) {
+        stop("When the input is points, the candidates must be a ",
+             "numeric vector or SpatRaster object")
       }
       if (methods::is(candidates, "SpatRaster")) {
         candidates_sample <- terra::extract(
@@ -358,10 +367,10 @@ sample_kmeans <- function(
           y = input,
           ID = FALSE,
           layer = 1
-        ) %>%
-          magrittr::extract2(1)
+        ) |>
+          (\(x) x[[1]])()
 
-        candidates <- c(1:length(input))[!is.na(candidates_sample)]
+        candidates <- seq_along(input)[!is.na(candidates_sample)]
         candidates_df <- input[candidates, ]
       } else {
         candidates <- unique(candidates)
@@ -381,7 +390,8 @@ sample_kmeans <- function(
     }
     if (is.null(weights)) {
       if (ncells > nrow(df)) {
-        message("ncells is larger than the number of input points. Using all input points instead.")
+        message("ncells is larger than the number of input points. ",
+                "Using all input points instead.")
       } else {
         # standard sampling for points dataset
         sampled <- sample(nrow(df),
@@ -401,8 +411,8 @@ sample_kmeans <- function(
           prob = df[, ncol(df)],
           replace = TRUE
         )
-        sampled_unique <- sampled %>% unique() %>% length()
-        seed_loop %<>% magrittr::add(1)
+        sampled_unique <- sampled |> unique() |> length()
+        seed_loop <- seed_loop + 1
       }
       w <- df[sampled, ncol(df)]
       df <- df[sampled, -ncol(df)]
@@ -414,7 +424,8 @@ sample_kmeans <- function(
     if (!is.null(weights)) {
       # check weights
       if (!is.vector(weights)) {
-        stop("When the input is a data frame, the weights must be a numeric vector.")
+        stop("When the input is a data frame, the weights must be a ",
+             "numeric vector.")
       } else {
         if (nrow(input) != length(weights)) {
           stop("The number of weights do not match the input data.")
@@ -427,7 +438,8 @@ sample_kmeans <- function(
     # Add warning if there is no overlap (if candidates are a vector)
     if (!is.null(candidates)) {
       if (!is.vector(candidates)) {
-        stop("When the input is a data frame, the candidates must be a numeric vector.")
+        stop("When the input is a data frame, the candidates must be ",
+             "a numeric vector.")
       } else {
         candidates <- unique(candidates)
         candidates <- candidates[candidates <= nrow(input)]
@@ -446,12 +458,14 @@ sample_kmeans <- function(
     }
     if (is.null(weights)) {
       if (ncells > nrow(df)) {
-        message("ncells is larger than the number of input rows. Using all input rows instead.")
+        message("ncells is larger than the number of input rows. ",
+                "Using all input rows instead.")
       } else {
         # standard sampling
-        sampled <- sample(nrow(df),
-                          ncells,
-                          replace = FALSE
+        sampled <- sample(
+          nrow(df),
+          ncells,
+          replace = FALSE
         )
         df <- df[sampled, ]
       }
@@ -466,8 +480,8 @@ sample_kmeans <- function(
           prob = df[, ncol(df)],
           replace = TRUE
         )
-        sampled_unique <- sampled %>% unique() %>% length()
-        seed_loop %<>% magrittr::add(1)
+        sampled_unique <- sampled |> unique() |> length()
+        seed_loop <- seed_loop + 1
       }
 
       w <- df[sampled, ncol(df)]
@@ -498,13 +512,13 @@ sample_kmeans <- function(
 
   # Scaling and PCA
   # Combine feature weights for scaling
-  if (!is.null(layer_weights) | !is.null(xy_weight)) {
-    sds_scaler <- df %>% ncol() %>% rep(1, .)
+  if (!is.null(layer_weights) || !is.null(xy_weight)) {
+    sds_scaler <- df |> ncol() |> rep(1, .)
 
-    if ( (!is.null(xy_weight) ) & (use_xy == TRUE) ) {
+    if ((!is.null(xy_weight)) && (use_xy == TRUE)) {
       sds_scaler[1:2] <- xy_weight
 
-      if ( (!is.null(layer_weights)) & (only_xy == FALSE)) {
+      if ((!is.null(layer_weights)) && (only_xy == FALSE)) {
         sds_scaler[-c(1:2)] <- layer_weights
       }
     } else {
@@ -513,15 +527,14 @@ sample_kmeans <- function(
   }
 
   # Scaling
-  if ( (scale == TRUE) | (exists("sds_scaler")) )
-    {
-      if (verbose == TRUE) {
-        message("Scaling input variables.")
-      }
-      if (!is.data.frame(df)) {
-        df %<>% as.data.frame
-      }
-      means <- apply(df, 2, mean)
+  if ((scale == TRUE) || (exists("sds_scaler"))) {
+    if (verbose == TRUE) {
+      message("Scaling input variables.")
+    }
+    if (!is.data.frame(df)) {
+      df <- as.data.frame(df)
+    }
+    means <- apply(df, 2, mean)
       if (scale == TRUE) {
         sds <- apply(df, 2, sd)
         if (use_xy == TRUE) {
@@ -529,32 +542,31 @@ sample_kmeans <- function(
         }
         sds[sds == 0] <- 1
       } else {
-        sds <- df %>% ncol() %>% rep(1, .)
+        sds <- df |> ncol() |> rep(1, .)
         scale <- TRUE
       }
       if (exists("sds_scaler")) {
-        sds %<>% magrittr::divide_by(sds_scaler)
+        sds <- sds / sds_scaler
       }
       if (verbose == TRUE) {
         scaling <- rbind(means, sds)
         rownames(scaling) <- c("Mean", "SD")
         print(scaling)
       }
-      df %<>%
-        sweep(MARGIN = 2, STATS = means, check.margin = FALSE) %>%
+      df <- df |>
+        sweep(MARGIN = 2, STATS = means, check.margin = FALSE) |>
         sweep(MARGIN = 2, FUN = "/", STATS = sds, check.margin = FALSE)
   }
   # Principal components analysis
-  if (pca == TRUE)
-    {
-      if (verbose == TRUE) {
-        message("Conducting principal components analysis.")
-      }
+  if (pca == TRUE) {
+    if (verbose == TRUE) {
+      message("Conducting principal components analysis.")
+    }
 
-      if (is.null(n_pcs)) {
-        n_pcs <- ncol(df)
-      }
-      pcs <- stats::prcomp(
+    if (is.null(n_pcs)) {
+      n_pcs <- ncol(df)
+    }
+    pcs <- stats::prcomp(
         df,
         scale. = FALSE,
         tol = tol_pca,
@@ -565,7 +577,7 @@ sample_kmeans <- function(
     }
 
   if (!is.data.frame(df)) {
-    df %<>% as.data.frame
+    df <- as.data.frame(df)
   } # Make sure it's a data frame
 
   out <- list()
@@ -622,88 +634,81 @@ sample_kmeans <- function(
     }
 
     # Not counting empty centroids
-    n_complete <- myclusters$centroids %>%
-      stats::complete.cases() %>%
+    n_complete <- myclusters$centroids |>
+      stats::complete.cases() |>
       sum()
 
     if (n_complete == clusters) {
       runagain <- FALSE
     } else {
       diff_try <- clusters - n_complete
-      clusters_try %<>%
-        magrittr::add(diff_try) %>%
-        min(., nrow(df) - 2) %>%
-        max(., 1)
-      seed_try %<>% magrittr::add(1)
+      clusters_try <- max(min(clusters_try + diff_try, nrow(df) - 2), 1)
+      seed_try <- seed_try + 1
     }
   }
 
-  mycentroids <- myclusters$centroids %>%
-    as.data.frame() %>%
+  mycentroids <- myclusters$centroids |>
+    as.data.frame() |>
     tidyr::drop_na()
 
   # Functions to map clusters
-  if (pca == FALSE & scale == FALSE) {
+  if (pca == FALSE && scale == FALSE) {
     map_clusters_fun <- function(x) {
-      if (x %>% sum() %>% is.na()) {
-        out <- c(NA, NA)
+      if (x |> sum() |> is.na()) {
+        c(NA, NA)
       } else {
-        dist <- x %>%
-          matrix(1) %>%
-          data.frame() %>%
-          fields::rdist(., mycentroids)
-        out <- c(which.min(dist), min(dist, na.rm = TRUE))
+        dist <- x |>
+          matrix(1) |>
+          data.frame() |>
+          fields::rdist(mycentroids)
+        c(which.min(dist), min(dist, na.rm = TRUE))
       }
-      return(out)
     }
   }
-  if (pca == FALSE & scale == TRUE) {
+  if (pca == FALSE && scale == TRUE) {
     map_clusters_fun <- function(x) {
-      if (x %>% sum() %>% is.na()) {
-        out <- c(NA, NA)
+      if (x |> sum() |> is.na()) {
+        c(NA, NA)
       } else {
-        dist <- x %>%
-          "-"(means) %>%
-          "/"(sds) %>%
-          matrix(1) %>%
-          data.frame() %>%
-          fields::rdist(., mycentroids)
-        out <- c(which.min(dist), min(dist, na.rm = TRUE))
+        dist <- x |>
+          (\(v) (v - means) / sds)() |>
+          matrix(1) |>
+          data.frame() |>
+          fields::rdist(mycentroids)
+        c(which.min(dist), min(dist, na.rm = TRUE))
       }
-      return(out)
     }
   }
-  if (pca == TRUE & scale == FALSE) {
+  if (pca == TRUE && scale == FALSE) {
     map_clusters_fun <- function(x) {
-      if (x %>% sum() %>% is.na()) {
+      if (x |> sum() |> is.na()) {
         out <- c(NA, NA)
       } else {
-        x %<>%
-          matrix(1) %>%
+        x <- x |>
+          matrix(1) |>
           data.frame()
-        colnames(x) <- pcs$rotation %>% rownames()
-        dist <- x %>%
-          stats::predict(pcs, .) %>%
-          fields::rdist(., mycentroids)
+        colnames(x) <- pcs$rotation |> rownames()
+        dist <- x |>
+          stats::predict(pcs, newdata = x) |>
+          fields::rdist(mycentroids)
         out <- c(which.min(dist), min(dist, na.rm = TRUE))
       }
       return(out)
     }
   }
-  if (pca == TRUE & scale == TRUE) {
+  if (pca == TRUE && scale == TRUE) {
     map_clusters_fun <- function(x) {
-      if (x %>% sum() %>% is.na()) {
+      if (x |> sum() |> is.na()) {
         out <- c(NA, NA)
       } else {
-        x %<>%
-          "-"(means) %>%
-          "/"(sds) %>%
-          matrix(1) %>%
+        x <- x |>
+          (\(v) (v - means) / sds)() |>
+          matrix(1) |>
           data.frame()
-        colnames(x) <- pcs$rotation %>% rownames()
-        dist <- x %>%
-          predict(pcs, .) %>%
-          fields::rdist(., mycentroids)
+        colnames(x) <- pcs$rotation |> rownames()
+        dist <- x |>
+          stats::predict(pcs, newdata = _) |>
+          fields::rdist(mycentroids)
         out <- c(which.min(dist), min(dist, na.rm = TRUE))
       }
       return(out)
@@ -711,7 +716,7 @@ sample_kmeans <- function(
   }
   # Function to find cluster centers
   findpoint <- function(x) {
-    if (x %>% sum() %>% is.na()) {
+    if (x |> sum() |> is.na()) {
       out <- NA
     } else {
       ismin <- zs[as.integer(x[1]), 2] == x[2]
@@ -733,8 +738,8 @@ sample_kmeans <- function(
     xy_r <- c(
       terra::init(input, "x"),
       terra::init(input, "y")
-    ) %>%
-      terra::mask(., sum(input))
+    ) |>
+      terra::mask(sum(input))
     if (use_xy == TRUE) {
       if (only_xy == TRUE) {
         input <- xy_r
@@ -800,7 +805,7 @@ sample_kmeans <- function(
       }
       s <- c(out$distances, weights)
       calc_wdist <- function(x) {
-        if (x %>% sum() %>% is.na()) {
+        if (x |> sum() |> is.na()) {
           out <- NA
         } else {
           if (x[2] == 0) {
@@ -916,7 +921,7 @@ sample_kmeans <- function(
 
       names(pts) <- "ID"
 
-      out$points <- as.data.frame(pts, xy = TRUE, na.rm = TRUE) %>%
+      out$points <- as.data.frame(pts, xy = TRUE, na.rm = TRUE) |>
         dplyr::arrange(.data$ID)
 
       out$points <- out$points[!duplicated(out$points$ID), ]
@@ -925,35 +930,35 @@ sample_kmeans <- function(
     } else {
       # Centers for raster input, when candidates are points
       # Extract clusters and distances for the candidate point
-      s <- candidates %>%
-        terra::extract(
+      s <- candidates |>
+        (\(y) terra::extract(
           x = s,
-          y = .,
+          y = y,
           ID = FALSE,
           xy = FALSE
-        )
+        ))()
 
       names(s) <- c("clust", "dist")
 
-      zs <- s %>%
-        dplyr::group_by(., .data$clust) %>%
-        dplyr::summarise(., mindist = min(.data$dist, na.rm = TRUE)) %>%
-        dplyr::ungroup(.) %>%
-        dplyr::mutate(., clust = as.integer(.data$clust)) %>%
-        dplyr::select(., .data$clust, .data$mindist)
+      zs <- s |>
+        dplyr::group_by(.data$clust) |>
+        dplyr::summarise(mindist = min(.data$dist, na.rm = TRUE)) |>
+        dplyr::ungroup() |>
+        dplyr::mutate(clust = as.integer(.data$clust)) |>
+        dplyr::select(.data$clust, .data$mindist)
 
       # Find points for the cluster centers
       pts <- apply(s, 1, FUN = findpoint)
 
-      out$points <- terra::crds(candidates) %>%
-        as.data.frame() %>%
+      out$points <- terra::crds(candidates) |>
+        as.data.frame() |>
         dplyr::mutate(
           ID = pts,
-          Index = c(1:length(pts))
-        ) %>%
+          Index = seq_along(pts)
+        ) |>
         tidyr::drop_na()
 
-      out$points <- out$points[!duplicated(out$points$ID), ] %>%
+      out$points <- out$points[!duplicated(out$points$ID), ] |>
         dplyr::arrange(.data$ID)
     }
   }
@@ -983,11 +988,11 @@ sample_kmeans <- function(
       terra::values(input),
       1,
       FUN = map_clusters_fun
-    ) %>% t()
+    ) |> t()
 
     # Calculate weighted distances for the points
-    out$distances <- out$clusters[, 2] %>% unname()
-    out$clusters <- out$clusters[, 1] %>% unname()
+    out$distances <- out$clusters[, 2] |> unname()
+    out$clusters <- out$clusters[, 1] |> unname()
     if (!is.null(weights)) {
       if (verbose == TRUE) {
         message("Calculating weighted distances.")
@@ -999,8 +1004,8 @@ sample_kmeans <- function(
     if (verbose == TRUE) {
       message("Identifying cluster centers.")
     }
-    zs1 <- out$clusters %>%
-      unique() %>%
+    zs1 <- out$clusters |>
+      unique() |>
       sort()
 
     zs2 <- sapply(zs1, function(x) {
@@ -1013,15 +1018,15 @@ sample_kmeans <- function(
 
     pts <- apply(s, 1, FUN = findpoint)
 
-    out$points <- terra::crds(input) %>%
-      as.data.frame() %>%
+    out$points <- terra::crds(input) |>
+      as.data.frame() |>
       dplyr::mutate(
         ID = pts,
-        Index = c(1:length(pts))
-      ) %>%
+        Index = seq_along(pts)
+      ) |>
       tidyr::drop_na()
 
-    out$points <- out$points[!duplicated(out$points$ID), ] %>%
+    out$points <- out$points[!duplicated(out$points$ID), ] |>
       dplyr::arrange(.data$ID)
   }
 
@@ -1042,11 +1047,11 @@ sample_kmeans <- function(
       input,
       1,
       FUN = map_clusters_fun
-    ) %>% t()
+    ) |> t()
 
     # Calculate weighted distances for the rows
-    out$distances <- out$clusters[, 2] %>% unname()
-    out$clusters <- out$clusters[, 1] %>% unname()
+    out$distances <- out$clusters[, 2] |> unname()
+    out$clusters <- out$clusters[, 1] |> unname()
     if (!is.null(weights)) {
       if (verbose == TRUE) {
         message("Calculating weighted distances.")
@@ -1058,8 +1063,8 @@ sample_kmeans <- function(
     if (verbose == TRUE) {
       message("Identifying cluster centers.")
     }
-    zs1 <- out$clusters %>%
-      unique() %>%
+    zs1 <- out$clusters |>
+      unique() |>
       sort()
 
     zs2 <- sapply(zs1, function(x) {
@@ -1074,11 +1079,11 @@ sample_kmeans <- function(
 
     out$points <- data.frame(
       ID = pts,
-      Index = c(1:length(pts))
-    ) %>%
+      Index = seq_along(pts)
+    ) |>
       tidyr::drop_na()
 
-    out$points <- out$points[!duplicated(out$points$ID), ] %>%
+    out$points <- out$points[!duplicated(out$points$ID), ] |>
       dplyr::arrange(.data$ID)
   }
 
@@ -1091,8 +1096,12 @@ sample_kmeans <- function(
       }
     }
 
-    if (shp == TRUE | sp_pts == TRUE) {
-      points_sp <- terra::vect(out$points, geom = c("x", "y"), terra::crs(input))
+    if (shp == TRUE || sp_pts == TRUE) {
+      points_sp <- terra::vect(
+        out$points,
+        geom = c("x", "y"),
+        terra::crs(input)
+      )
     }
 
     if (!is.null(filename_pts)) {
