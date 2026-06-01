@@ -99,6 +99,7 @@ sample_kmeans <- function(
 ) {
 
   backup_options <- options()
+  on.exit(options(backup_options), add = TRUE)
   options(error = traceback) # Did this make it work?
   # Find out how to reset options
 
@@ -375,10 +376,24 @@ sample_kmeans <- function(
           (\(x) x[[1]])()
 
         candidates <- seq_along(input)[!is.na(candidates_sample)]
+        if (length(candidates) == 0) {
+          stop(
+            "There is no overlap between the input points and the ",
+            "candidates raster."
+          )
+        }
         candidates_df <- input[candidates, ]
       } else {
         candidates <- unique(candidates)
-        candidates <- candidates[candidates <= nrow(input)]
+        candidates <- candidates[!is.na(candidates)]
+        candidates <- candidates[candidates == as.integer(candidates)]
+        candidates <- as.integer(candidates)
+        candidates <- candidates[
+          candidates >= 1 & candidates <= nrow(input)
+        ]
+        if (length(candidates) == 0) {
+          stop("No valid candidate indices for the input points.")
+        }
         candidates_df <- input[candidates, ]
       }
     }
@@ -453,7 +468,15 @@ sample_kmeans <- function(
         )
       } else {
         candidates <- unique(candidates)
-        candidates <- candidates[candidates <= nrow(input)]
+        candidates <- candidates[!is.na(candidates)]
+        candidates <- candidates[candidates == as.integer(candidates)]
+        candidates <- as.integer(candidates)
+        candidates <- candidates[
+          candidates >= 1 & candidates <= nrow(input)
+        ]
+        if (length(candidates) == 0) {
+          stop("No valid candidate indices for the input data.")
+        }
         candidates_df <- input[candidates, ]
       }
     }
@@ -730,7 +753,11 @@ sample_kmeans <- function(
     if (x |> sum() |> is.na()) {
       NA
     } else {
-      ismin <- zs[as.integer(x[1]), 2] == x[2]
+      zrow <- match(as.integer(x[1]), as.integer(zs[, 1]))
+      if (is.na(zrow)) {
+        return(NA)
+      }
+      ismin <- zs[zrow, 2] == x[2]
       if (!ismin) {
         NA
       } else {
@@ -1013,18 +1040,30 @@ sample_kmeans <- function(
     if (verbose == TRUE) {
       message("Identifying cluster centers.")
     }
-    zs1 <- out$clusters |>
+    s <- cbind(out$clusters, out$distances)
+
+    s_search <- s
+    search_idx <- seq_len(nrow(s))
+    if (!is.null(candidates)) {
+      search_idx <- unique(candidates)
+      s_search <- s[search_idx, , drop = FALSE]
+    }
+
+    zs1 <- s_search[, 1] |>
       unique() |>
+      (
+        \(x) x[!is.na(x)]
+      )() |>
       sort()
 
     zs2 <- sapply(zs1, function(x) {
-      min(out$distances[out$clusters == x], na.rm = TRUE)
+      min(s_search[s_search[, 1] == x, 2], na.rm = TRUE)
     })
 
     zs <- cbind(zs1, zs2)
-    s <- cbind(out$clusters, out$distances)
 
-    pts <- apply(s, 1, FUN = findpoint)
+    pts <- rep(NA_integer_, nrow(s))
+    pts[search_idx] <- apply(s_search, 1, FUN = findpoint)
 
     out$points <- terra::crds(input) |>
       as.data.frame() |>
@@ -1071,18 +1110,30 @@ sample_kmeans <- function(
     if (verbose == TRUE) {
       message("Identifying cluster centers.")
     }
-    zs1 <- out$clusters |>
+    s <- cbind(out$clusters, out$distances)
+
+    s_search <- s
+    search_idx <- seq_len(nrow(s))
+    if (!is.null(candidates)) {
+      search_idx <- unique(candidates)
+      s_search <- s[search_idx, , drop = FALSE]
+    }
+
+    zs1 <- s_search[, 1] |>
       unique() |>
+      (
+        \(x) x[!is.na(x)]
+      )() |>
       sort()
 
     zs2 <- sapply(zs1, function(x) {
-      min(out$distances[out$clusters == x], na.rm = TRUE)
+      min(s_search[s_search[, 1] == x, 2], na.rm = TRUE)
     })
 
     zs <- cbind(zs1, zs2)
-    s <- cbind(out$clusters, out$distances)
 
-    pts <- apply(s, 1, FUN = findpoint)
+    pts <- rep(NA_integer_, nrow(s))
+    pts[search_idx] <- apply(s_search, 1, FUN = findpoint)
 
     out$points <- data.frame(
       ID = pts,
@@ -1146,9 +1197,7 @@ sample_kmeans <- function(
   } else {
     # write selected rows to file if requested?
   }
-
-
-  options(backup_options)
+  out
 }
 
 # END
