@@ -12,7 +12,10 @@ assert_true <- function(cond, msg) {
 
 assert_in_candidates <- function(out_points, candidates, label) {
   assert_true(!is.null(out_points), paste0(label, ": output points is NULL."))
-  assert_true("Index" %in% colnames(out_points), paste0(label, ": missing Index column."))
+  assert_true(
+    "Index" %in% colnames(out_points),
+    paste0(label, ": missing Index column.")
+  )
   assert_true(
     all(out_points$Index %in% candidates),
     paste0(label, ": found selected centers outside candidates.")
@@ -44,8 +47,8 @@ assert_true(nrow(df_out$points) >= 1, "data.frame test: no centers returned.")
 
 cat("PASS: data.frame candidates constrain selected centers.\n")
 
-# 2) data.frame partial coverage: fewer centers allowed when some clusters have no candidates
-# Candidates from one compact region only.
+# 2) data.frame partial coverage: fewer centers allowed when some
+# clusters have no candidates. Candidates from one compact region only.
 df_candidates_partial <- as.integer(1:15)
 
 df_out_partial <- sample_kmeans(
@@ -55,10 +58,15 @@ df_out_partial <- sample_kmeans(
   seed = 7
 )
 
-assert_in_candidates(df_out_partial$points, df_candidates_partial, "data.frame partial test")
+assert_in_candidates(
+  df_out_partial$points,
+  df_candidates_partial,
+  "data.frame partial test"
+)
 assert_true(
   nrow(df_out_partial$points) < 3,
-  "data.frame partial test: expected fewer than requested clusters when candidates do not cover all clusters."
+  "data.frame partial test: expected fewer than requested clusters when
+    candidates do not cover all clusters."
 )
 
 cat("PASS: data.frame partial candidates return fewer centers.\n")
@@ -84,7 +92,11 @@ pts_out <- sample_kmeans(
 )
 
 assert_true(is.list(pts_out), "points test: output is not a list.")
-assert_in_candidates(pts_out$points, pts_candidates, "points numeric candidates test")
+assert_in_candidates(
+  pts_out$points,
+  pts_candidates,
+  "points numeric candidates test"
+)
 assert_true(nrow(pts_out$points) >= 1, "points test: no centers returned.")
 
 cat("PASS: points numeric candidates constrain selected centers.\n")
@@ -109,14 +121,28 @@ pts_out_mask <- sample_kmeans(
   seed = 11
 )
 
-mask_candidate_idx <- seq_len(nrow(pts_df))[terra::extract(mask_r, pts_input, ID = FALSE, layer = 1)[, 1] == 1]
+mask_extract <- terra::extract(
+  mask_r,
+  pts_input,
+  ID = FALSE,
+  layer = 1
+)
+mask_candidate_idx <- seq_len(nrow(pts_df))[mask_extract[, 1] == 1]
 mask_candidate_idx <- as.integer(mask_candidate_idx)
 
-assert_in_candidates(pts_out_mask$points, mask_candidate_idx, "points raster candidates test")
+assert_in_candidates(
+  pts_out_mask$points,
+  mask_candidate_idx,
+  "points raster candidates test"
+)
 assert_true(
   nrow(pts_out_mask$points) < 3,
-  "points raster candidates test: expected fewer than requested clusters when mask does not cover all clusters."
+  paste0(
+    "points raster candidates test: expected fewer than ",
+    "requested clusters when mask does not cover all clusters."
+  )
 )
 
-cat("PASS: points raster candidates constrain centers and allow fewer centers.\n")
+cat("PASS: points raster candidates constrain centers and allow",
+    "fewer centers.\n")
 cat("All focused non-raster candidate tests passed.\n")
