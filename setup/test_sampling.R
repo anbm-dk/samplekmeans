@@ -55,11 +55,11 @@ points(myclusters_r$points, col = "red", pch = 20)
 
 
 # # Test with one cluster
-#
-# myclusters_r <- sample_kmeans(input = r, clusters = 1, use_xy = TRUE)
-#
-# plot(myclusters_r$clusters)
-# points(myclusters_r$points)
+
+myclusters_r <- sample_kmeans(input = r, clusters = 1, use_xy = TRUE)
+
+plot(myclusters_r$clusters)
+points(myclusters_r$points)
 
 
 # Test for points
@@ -119,7 +119,6 @@ myclusters_r_cand <- sample_kmeans(
   clusters = 20,
   weights = myweights,
   use_xy = TRUE,
-  # only_xy = TRUE,
   xy_weight = c(1, 2),
   layer_weights = 1,
   candidates = r_cand

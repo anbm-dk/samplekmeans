@@ -15,9 +15,18 @@
 #' @param layer_weights Numeric vector with weights for each input parameter.
 #' @param xy_weight Numeric vector of weights for the x and y coordinates
 #' (repeated if length 1).
-#' @param candidates Numeric vector with indices for the points or rows that can
-#' be selected as centers for the clusters, or a `SpatRaster` object with a
-#' mask for the areas that can be selected.
+#' @param candidates Candidate pool for selecting cluster centers. Supports:
+#'
+#' - numeric indices for rows/points in `input`;
+#' - a `data.frame` when `input` is a `data.frame` (same column names and
+#' classes; column order can differ);
+#' - a `SpatVector` with points when `input` is a `SpatVector` with points
+#' (same attribute names/classes; candidate CRS is reprojected to match input if
+#' needed);
+#' - a `SpatRaster` mask for spatial inputs.
+#'
+#' When candidates map to rows/points in `input`, center selection is
+#' constrained to those rows/points.
 #' @param scale Center and scale variables.
 #' @param pca Use principal component analysis on variables.
 #' @param tol_pca Tolerance for pca (remove PCs below threshold).
@@ -164,11 +173,47 @@ sample_kmeans <- function(
     }
   }
 
+  # Helpers for matching candidate formats to input rows/points
+  align_candidate_df <- function(candidates_df, input_df, label) {
+    input_names <- colnames(input_df)
+    cand_names <- colnames(candidates_df)
+    if (!setequal(input_names, cand_names)) {
+      stop(
+        "When ", label, ", candidate columns must match input columns."
+      )
+    }
+    candidates_df <- candidates_df[, input_names, drop = FALSE]
+
+    class_ok <- mapply(
+      function(x, y) identical(class(x), class(y)),
+      input_df,
+      candidates_df,
+      SIMPLIFY = TRUE,
+      USE.NAMES = FALSE
+    )
+    if (!all(class_ok)) {
+      stop(
+        "When ", label,
+        ", candidate column classes must match input column classes."
+      )
+    }
+    candidates_df
+  }
+
+  row_keys <- function(df) {
+    apply(df, 1, function(r) {
+      paste(vapply(r, function(v) {
+        if (is.na(v)) "__NA__" else as.character(v)
+      }, character(1)), collapse = "\r")
+    })
+  }
+
   # Identify candidates
   candidates_israster <- FALSE
   candidates_ispts <- FALSE
   candidates_isdf <- FALSE
   candidates_index <- FALSE
+  candidates_use_index <- NULL
   if (!is.null(candidates)) {
     if (methods::is(candidates, "SpatRaster")) {
       candidates_israster <- TRUE
@@ -360,10 +405,10 @@ sample_kmeans <- function(
     # check candidates, if input is a points data set
     # Add warning if there is no overlap
     if (!is.null(candidates)) {
-      if (!candidates_israster && !candidates_index) {
+      if (!candidates_israster && !candidates_index && !candidates_ispts) {
         stop(
           "When the input is points, the candidates must be a ",
-          "numeric vector or SpatRaster object"
+          "numeric vector, SpatRaster object, or SpatVector with points"
         )
       }
       if (methods::is(candidates, "SpatRaster")) {
@@ -383,6 +428,51 @@ sample_kmeans <- function(
           )
         }
         candidates_df <- input[candidates, ]
+      } else if (candidates_ispts) {
+        if (terra::geomtype(candidates) != "points") {
+          stop(
+            "When input is points, SpatVector candidates must have point ",
+            "geometry."
+          )
+        }
+
+        if (!identical(terra::crs(candidates), terra::crs(input))) {
+          candidates <- terra::project(candidates, terra::crs(input))
+        }
+
+        input_values <- terra::values(input)
+        cand_values <- terra::values(candidates)
+        cand_values <- align_candidate_df(
+          cand_values,
+          input_values,
+          "input is points"
+        )
+
+        input_xy <- as.data.frame(terra::crds(input))
+        cand_xy <- as.data.frame(terra::crds(candidates))
+        colnames(input_xy) <- c("x", "y")
+        colnames(cand_xy) <- c("x", "y")
+        input_xy$x <- round(input_xy$x, 8)
+        input_xy$y <- round(input_xy$y, 8)
+        cand_xy$x <- round(cand_xy$x, 8)
+        cand_xy$y <- round(cand_xy$y, 8)
+
+        input_key_df <- cbind(input_xy, input_values)
+        cand_key_df <- cbind(cand_xy, cand_values)
+        input_keys <- row_keys(input_key_df)
+        cand_keys <- row_keys(cand_key_df)
+
+        candidates_mapped <- match(cand_keys, input_keys)
+        candidates_use_index <- unique(
+          candidates_mapped[!is.na(candidates_mapped)]
+        )
+
+        if (length(candidates_use_index) == 0) {
+          stop(
+            "No candidate points matched the input points with identical ",
+            "coordinates and attributes."
+          )
+        }
       } else {
         candidates <- unique(candidates)
         candidates <- candidates[!is.na(candidates)]
@@ -461,11 +551,30 @@ sample_kmeans <- function(
     # check candidates for data frame input
     # Add warning if there is no overlap (if candidates are a vector)
     if (!is.null(candidates)) {
-      if (!is.vector(candidates)) {
+      if (!is.vector(candidates) && !candidates_isdf) {
         stop(
           "When the input is a data frame, the candidates must be ",
-          "a numeric vector."
+          "a numeric vector or a data frame."
         )
+      } else if (candidates_isdf) {
+        candidates_df <- align_candidate_df(
+          candidates,
+          input,
+          "input is a data frame"
+        )
+
+        input_keys <- row_keys(input)
+        cand_keys <- row_keys(candidates_df)
+        candidates_use_index <- match(cand_keys, input_keys)
+        candidates_use_index <- unique(
+          candidates_use_index[!is.na(candidates_use_index)]
+        )
+
+        if (length(candidates_use_index) == 0) {
+          stop(
+            "No candidate rows matched input rows after column alignment."
+          )
+        }
       } else {
         candidates <- unique(candidates)
         candidates <- candidates[!is.na(candidates)]
@@ -478,6 +587,7 @@ sample_kmeans <- function(
           stop("No valid candidate indices for the input data.")
         }
         candidates_df <- input[candidates, ]
+        candidates_use_index <- candidates
       }
     }
 
@@ -1045,7 +1155,11 @@ sample_kmeans <- function(
     s_search <- s
     search_idx <- seq_len(nrow(s))
     if (!is.null(candidates)) {
-      search_idx <- unique(candidates)
+      if (!is.null(candidates_use_index)) {
+        search_idx <- candidates_use_index
+      } else {
+        search_idx <- unique(candidates)
+      }
       s_search <- s[search_idx, , drop = FALSE]
     }
 
@@ -1115,7 +1229,11 @@ sample_kmeans <- function(
     s_search <- s
     search_idx <- seq_len(nrow(s))
     if (!is.null(candidates)) {
-      search_idx <- unique(candidates)
+      if (!is.null(candidates_use_index)) {
+        search_idx <- candidates_use_index
+      } else {
+        search_idx <- unique(candidates)
+      }
       s_search <- s[search_idx, , drop = FALSE]
     }
 

@@ -58,7 +58,7 @@ sample_kmeans(
 
 \item{xy_weight}{Numeric vector of weights for the x and y coordinates (repeated if length 1).}
 
-\item{candidates}{Numeric vector with indices for the points or rows that can be selected as centers for the clusters, or a \code{SpatRaster} object with a mask for the areas that can be selected.}
+\item{candidates}{Candidate pool for selecting cluster centers. Supports numeric indices for rows/points in \code{input}; a \code{data.frame} when \code{input} is a \code{data.frame} (same column names and classes; column order can differ); a \code{SpatVector} with points when \code{input} is a \code{SpatVector} with points (same attribute names/classes; candidate CRS is reprojected to match input if needed); and a \code{SpatRaster} mask for spatial inputs. When candidates map to rows/points in \code{input}, center selection is constrained to those rows/points.}
 
 \item{scale}{Center and scale variables.}
 

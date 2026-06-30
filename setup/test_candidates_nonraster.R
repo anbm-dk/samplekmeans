@@ -22,6 +22,25 @@ assert_in_candidates <- function(out_points, candidates, label) {
   )
 }
 
+assert_error <- function(expr, pattern, label) {
+  err <- tryCatch(
+    {
+      force(expr)
+      NULL
+    },
+    error = function(e) e
+  )
+  assert_true(!is.null(err), paste0(label, ": expected an error."))
+  assert_true(
+    grepl(pattern, conditionMessage(err), fixed = TRUE),
+    paste0(
+      label,
+      ": error message mismatch. Got: ",
+      conditionMessage(err)
+    )
+  )
+}
+
 cat("Running focused candidate tests for non-raster inputs...\n")
 
 # 1) data.frame input: centers must come from candidate indices
@@ -145,4 +164,114 @@ assert_true(
 
 cat("PASS: points raster candidates constrain centers and allow",
     "fewer centers.\n")
+
+# 5) data.frame input with candidates as data.frame
+# Candidate columns can be reordered but names/classes must match input.
+df_candidates_df <- df_input[c(5, 35, 65, 10), c("v2", "v1")]
+df_candidates_idx <- c(5, 35, 65, 10)
+
+df_out_dfcand <- sample_kmeans(
+  input = df_input,
+  clusters = 3,
+  candidates = df_candidates_df,
+  seed = 7
+)
+
+assert_in_candidates(
+  df_out_dfcand$points,
+  df_candidates_idx,
+  "data.frame candidates-as-data.frame test"
+)
+
+cat("PASS: data.frame candidates as data.frame constrain centers.\n")
+
+# 6) spatial points input with candidates as SpatVector points
+# Reproject candidates to test CRS harmonization.
+pts_candidates_idx <- c(2, 18, 50, 95)
+pts_candidates_sv <- pts_input[pts_candidates_idx, ]
+pts_candidates_sv <- terra::project(pts_candidates_sv, "EPSG:3857")
+
+pts_out_sv <- sample_kmeans(
+  input = pts_input,
+  clusters = 3,
+  candidates = pts_candidates_sv,
+  seed = 11
+)
+
+assert_in_candidates(
+  pts_out_sv$points,
+  pts_candidates_idx,
+  "points candidates-as-SpatVector test"
+)
+
+cat("PASS: points candidates as SpatVector constrain centers.\n")
+
+# 7) negative: data.frame candidates missing a required column
+df_candidates_missing_col <- data.frame(v1 = df_input$v1[1:5])
+
+assert_error(
+  sample_kmeans(
+    input = df_input,
+    clusters = 3,
+    candidates = df_candidates_missing_col,
+    seed = 7
+  ),
+  "candidate columns must match input columns.",
+  "data.frame candidates missing column test"
+)
+
+cat("PASS: data.frame missing-column mismatch throws error.\n")
+
+# 8) negative: data.frame candidates with class mismatch
+df_candidates_class_mismatch <- df_input[1:5, ]
+df_candidates_class_mismatch$v1 <- as.character(df_candidates_class_mismatch$v1)
+
+assert_error(
+  sample_kmeans(
+    input = df_input,
+    clusters = 3,
+    candidates = df_candidates_class_mismatch,
+    seed = 7
+  ),
+  "candidate column classes must match input column classes.",
+  "data.frame candidates class mismatch test"
+)
+
+cat("PASS: data.frame class mismatch throws error.\n")
+
+# 9) negative: SpatVector candidates missing required attribute column
+pts_candidates_missing_col <- pts_input[pts_candidates_idx, ]
+pts_candidates_missing_col$z2 <- NULL
+
+assert_error(
+  sample_kmeans(
+    input = pts_input,
+    clusters = 3,
+    candidates = pts_candidates_missing_col,
+    seed = 11
+  ),
+  "candidate columns must match input columns.",
+  "SpatVector candidates missing column test"
+)
+
+cat("PASS: SpatVector missing-column mismatch throws error.\n")
+
+# 10) negative: SpatVector candidates with attribute class mismatch
+pts_candidates_class_mismatch <- pts_input[pts_candidates_idx, ]
+pts_candidates_class_mismatch$z1 <- as.character(
+  pts_candidates_class_mismatch$z1
+)
+
+assert_error(
+  sample_kmeans(
+    input = pts_input,
+    clusters = 3,
+    candidates = pts_candidates_class_mismatch,
+    seed = 11
+  ),
+  "candidate column classes must match input column classes.",
+  "SpatVector candidates class mismatch test"
+)
+
+cat("PASS: SpatVector class mismatch throws error.\n")
 cat("All focused non-raster candidate tests passed.\n")
