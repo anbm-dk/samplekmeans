@@ -1,7 +1,0 @@
-source('R/sample_kmeans.R')
-df <- data.frame(a = c(rnorm(100,-2,0.3), rnorm(100,2,0.3)), b = c(rnorm(100,-2,0.3), rnorm(100,2,0.3)))
-out1 <- sample_kmeans(input = df, clusters = 2, ncells = 50, seed = 123)
-out2 <- sample_kmeans(input = df, clusters = 2, ncells = 50, seed = 123)
-cat(identical(out1$points, out2$points), '\n')
-print(out1$points)
-print(out2$points)
