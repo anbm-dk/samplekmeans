@@ -21,6 +21,17 @@ library(devtools)
 install_github("anbm-dk/samplekmeans")
 ```
 
+## Testing
+
+Run all focused test scripts from the repository root:
+
+``` r
+Rscript setup/run_tests.R
+```
+
+The test entrypoint discovers and runs all scripts matching
+`setup/test_*.R` and prints a pass/fail summary.
+
 ## Usage example
 
 Load a raster:

@@ -14,6 +14,8 @@ sample_kmeans(
   layer_weights = NULL,
   xy_weight = NULL,
   candidates = NULL,
+  candidate_weights = NULL,
+  candidate_weight_col = NULL,
   scale = TRUE,
   pca = FALSE,
   tol_pca = 0,
@@ -76,6 +78,15 @@ needed);
 
 When candidates map to rows/points in \code{input}, center selection is
 constrained to those rows/points.}
+
+\item{candidate_weights}{Optional numeric vector of positive weights for
+candidate records. Supported when \code{candidates} is an independent
+\code{data.frame} or \code{SpatVector} with points.}
+
+\item{candidate_weight_col}{Optional name of a numeric, positive weight
+column in candidate attributes. If both \code{candidate_weights} and
+\code{candidate_weight_col} are provided, \code{candidate_weights} takes
+precedence.}
 
 \item{scale}{Center and scale variables.}
 

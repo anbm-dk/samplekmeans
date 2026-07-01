@@ -101,7 +101,7 @@ pts_df <- data.frame(
 )
 
 pts_input <- terra::vect(pts_df, geom = c("x", "y"), crs = "EPSG:4326")
-pts_candidates <- as.integer(c(1:20, 45:55, 90:100))
+pts_candidates <- c(1:20, 45:55, 90:100)
 
 pts_out <- sample_kmeans(
   input = pts_input,
@@ -119,6 +119,24 @@ assert_in_candidates(
 assert_true(nrow(pts_out$points) >= 1, "points test: no centers returned.")
 
 cat("PASS: points numeric candidates constrain selected centers.\n")
+
+# 3b) spatial points input with plain numeric candidate indices
+pts_candidates_numeric <- c(2, 18, 50, 95)
+
+pts_out_numeric <- sample_kmeans(
+  input = pts_input,
+  clusters = 3,
+  candidates = pts_candidates_numeric,
+  seed = 11
+)
+
+assert_in_candidates(
+  pts_out_numeric$points,
+  pts_candidates_numeric,
+  "points plain numeric candidates test"
+)
+
+cat("PASS: points plain numeric candidates constrain selected centers.\n")
 
 # 4) spatial points input with raster candidates mask
 # Build a simple mask that only keeps the first region of points.
@@ -274,4 +292,154 @@ assert_error(
 )
 
 cat("PASS: SpatVector class mismatch throws error.\n")
+
+# 11) negative: data.frame input weights with NA should fail
+df_weights_na <- rep(1, nrow(df_input))
+df_weights_na[3] <- NA
+
+assert_error(
+  sample_kmeans(
+    input = df_input,
+    clusters = 3,
+    weights = df_weights_na,
+    seed = 7
+  ),
+  "Weights for input data must contain only finite values.",
+  "data.frame NA weights validation"
+)
+
+cat("PASS: data.frame NA weights validation throws error.\n")
+
+# 12) negative: points input weights all zero should fail
+pts_weights_zero <- rep(0, nrow(pts_input))
+
+assert_error(
+  sample_kmeans(
+    input = pts_input,
+    clusters = 3,
+    weights = pts_weights_zero,
+    seed = 11
+  ),
+  "Weights for input points must contain at least one value greater than zero.",
+  "points zero weights validation"
+)
+
+cat("PASS: points zero weights validation throws error.\n")
+
+# 13) candidate_weights for data.frame candidates with precedence over column
+df_candidates_weighted <- df_input[c(5, 35, 65, 10), c("v2", "v1")]
+df_candidates_weighted$cw <- c(1, 1, 1, 1)
+cw_vec <- c(10, 1, 1, 1)
+
+df_candidates_for_vec <- df_candidates_weighted[, c("v2", "v1")]
+
+df_out_vec <- sample_kmeans(
+  input = df_input,
+  clusters = 3,
+  candidates = df_candidates_for_vec,
+  candidate_weights = cw_vec,
+  seed = 7
+)
+
+warn_msg <- NULL
+df_out_both <- withCallingHandlers(
+  sample_kmeans(
+    input = df_input,
+    clusters = 3,
+    candidates = df_candidates_weighted,
+    candidate_weights = cw_vec,
+    candidate_weight_col = "cw",
+    seed = 7
+  ),
+  warning = function(w) {
+    warn_msg <<- conditionMessage(w)
+    invokeRestart("muffleWarning")
+  }
+)
+
+assert_true(
+  !is.null(warn_msg),
+  "candidate weight precedence test: expected warning when both sources are provided."
+)
+assert_true(
+  grepl("using candidate_weights and ignoring candidate_weight_col", warn_msg, fixed = TRUE),
+  "candidate weight precedence test: warning message mismatch."
+)
+cat("PASS: candidate_weights precedence over candidate_weight_col works.\n")
+
+# 14) negative: candidate_weights length mismatch for data.frame candidates
+assert_error(
+  sample_kmeans(
+    input = df_input,
+    clusters = 3,
+    candidates = df_candidates_weighted,
+    candidate_weights = c(1, 1),
+    seed = 7
+  ),
+  "candidate_weights length does not match the number of candidate data.frame records.",
+  "candidate_weights length mismatch validation"
+)
+
+cat("PASS: candidate_weights length mismatch throws error.\n")
+
+# 14b) weighted data.frame input still accepts candidates without weights column
+df_input_weights <- seq_len(nrow(df_input)) / nrow(df_input)
+df_candidates_weighted_input <- df_input[c(5, 35, 65, 10), c("v2", "v1")]
+
+df_out_weighted_input <- sample_kmeans(
+  input = df_input,
+  clusters = 3,
+  weights = df_input_weights,
+  candidates = df_candidates_weighted_input,
+  seed = 7
+)
+
+assert_in_candidates(
+  df_out_weighted_input$points,
+  c(5, 35, 65, 10),
+  "weighted data.frame input candidate match test"
+)
+
+cat("PASS: weighted data.frame input accepts candidates without weights column.\n")
+
+# 15) candidate_weight_col support for SpatVector candidates
+pts_candidates_sv_w <- pts_input[pts_candidates_idx, ]
+pts_candidates_sv_w$cw <- c(5, 1, 1, 1)
+
+pts_out_sv_weighted <- sample_kmeans(
+  input = pts_input,
+  clusters = 3,
+  candidates = pts_candidates_sv_w,
+  candidate_weight_col = "cw",
+  seed = 11
+)
+
+assert_in_candidates(
+  pts_out_sv_weighted$points,
+  pts_candidates_idx,
+  "points candidate_weight_col support test"
+)
+
+cat("PASS: candidate_weight_col support works for SpatVector candidates.\n")
+
+# 16) weighted points input still accepts SpatVector candidates
+pts_input_weights <- seq_len(nrow(pts_input)) / nrow(pts_input)
+pts_candidates_sv_plain <- pts_input[pts_candidates_idx, ]
+
+pts_out_sv_weighted_input <- sample_kmeans(
+  input = pts_input,
+  clusters = 3,
+  weights = pts_input_weights,
+  candidates = pts_candidates_sv_plain,
+  seed = 11
+)
+
+assert_in_candidates(
+  pts_out_sv_weighted_input$points,
+  pts_candidates_idx,
+  "weighted points input candidate match test"
+)
+
+cat("PASS: weighted points input accepts SpatVector candidates without weights column.\n")
+
 cat("All focused non-raster candidate tests passed.\n")

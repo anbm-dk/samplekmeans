@@ -1,6 +1,15 @@
 #' k-means sampling
 #'
-#' Produces a set of points sampled from a raster or point dataset.
+#' @description
+#' Produces representative samples by clustering input data and selecting
+#' one center per cluster from observed records. The function accepts tabular
+#' data (`data.frame`), rasters (`SpatRaster`), and point vectors
+#' (`SpatVector` with point geometry), and can include geographic coordinates
+#' as clustering variables. Optional input weights affect sampling and distance
+#' ranking, while optional candidate constraints restrict which rows/points can
+#' be selected as final centers. Variables can be standardized, reweighted, and
+#' reduced with PCA before clustering. Outputs include cluster assignments,
+#' distances to assigned centroids, and selected center locations/indices.
 #'
 #' @param input An input `data.frame`, or a `SpatRaster` or `SpatVector`
 #' object created by package [terra]. The input should contain only numeric
@@ -17,7 +26,8 @@
 #' (repeated if length 1).
 #' @param candidates Candidate pool for selecting cluster centers. Supports:
 #'
-#' - numeric indices for rows/points in `input`;
+#' - numeric indices for rows/points in `input` (data frame and point-vector
+#'   inputs);
 #' - a `data.frame` when `input` is a `data.frame` (same column names and
 #' classes; column order can differ);
 #' - a `SpatVector` with points when `input` is a `SpatVector` with points
@@ -27,6 +37,12 @@
 #'
 #' When candidates map to rows/points in `input`, center selection is
 #' constrained to those rows/points.
+#' @param candidate_weights Optional numeric vector of positive weights for
+#' candidate records. Supported when `candidates` is an independent
+#' `data.frame` or `SpatVector` with points.
+#' @param candidate_weight_col Optional name of a numeric, positive weight
+#' column in candidate attributes. If both `candidate_weights` and
+#' `candidate_weight_col` are provided, `candidate_weights` takes precedence.
 #' @param scale Center and scale variables.
 #' @param pca Use principal component analysis on variables.
 #' @param tol_pca Tolerance for pca (remove PCs below threshold).
@@ -38,21 +54,21 @@
 #' @param tol_kmeans See KMeans_rcpp.
 #' @param tol_opt See KMeans_rcpp.
 #' @param seed See KMeans_rcpp.
-#' @param MiniBatch Use MiniBatchKmeans (fast, less accurate).
+#' @param mini_batch Use MiniBatchKmeans (fast, less accurate).
 #' @param batch_size See MiniBatchKmeans.
 #' @param init_frac See MiniBatchKmeans.
 #' @param early_stop See MiniBatchKmeans.
-#' @param filename_cl File names for rasters with clusters (1) and distances
-#' (2).
-#' @param args_cl List with arguments for writing raster.
+#' @param filename_cl File name for the output cluster raster.
+#' @param args_cl List with arguments for writing the cluster raster.
 #' @param filename_d File name for distance rasters.
 #' @param args_d arguments for writing distance rasters.
 #' @param sp_pts Output locations as spatial points.
 #' @param filename_pts Filename for output locations.
 #' @param shp Write output locations as a shapefile.
-#' @param args_pts Arguments for writing output pointsx.
+#' @param args_pts Arguments for writing output points.
 #' @param cores Number of cpu cores to use.
 #' @param verbose Print messages during processing.
+#' @return A list with components `clusters`, `distances`, and `points`.
 #' @export
 #' @importFrom methods is
 #' @importFrom stats  complete.cases prcomp predict sd
@@ -77,6 +93,8 @@ sample_kmeans <- function(
   xy_weight = NULL, # Numeric vector of weights for the x and y coordinates
   # (repeated if length 1)
   candidates = NULL,
+  candidate_weights = NULL,
+  candidate_weight_col = NULL,
   scale = TRUE, # Center and scale variables
   pca = FALSE, # Use principal component analysis on variables
   tol_pca = 0, # Tolerance for pca (remove PCs below threshold)
@@ -104,12 +122,6 @@ sample_kmeans <- function(
   cores = NULL, # Number of cpu cores to use
   verbose = FALSE # Print messages during processing
 ) {
-
-  backup_options <- options()
-  on.exit(options(backup_options), add = TRUE)
-  options(error = traceback) # Did this make it work?
-  # Find out how to reset options
-
   if (is.null(input) && is.null(weights)) {
     stop("No input data.")
   }
@@ -146,6 +158,9 @@ sample_kmeans <- function(
       "Input must be either a data frame, a SpatRaster or a ",
       "SpatVector with points."
     )
+  }
+  if (inputispoints) {
+    input <- input[seq_len(nrow(input)), ]
   }
   if (inputisdf) {
     only_xy <- FALSE
@@ -206,12 +221,113 @@ sample_kmeans <- function(
     })
   }
 
+  validate_numeric_weights <- function(
+    x,
+    label,
+    require_all_positive = FALSE
+  ) {
+    if (!is.numeric(x)) {
+      stop(label, " must be numeric.")
+    }
+    if (any(!is.finite(x))) {
+      stop(label, " must contain only finite values.")
+    }
+    if (any(x < 0)) {
+      stop(label, " must not contain negative values.")
+    }
+    if (require_all_positive) {
+      if (any(x <= 0)) {
+        stop(label, " must contain only positive values.")
+      }
+    } else {
+      if (!any(x > 0)) {
+        stop(label, " must contain at least one value greater than zero.")
+      }
+    }
+    x
+  }
+
+  resolve_candidate_weights <- function(
+    candidates_obj,
+    weights_arg,
+    weight_col,
+    label
+  ) {
+    out <- NULL
+
+    if (!is.null(weights_arg) && !is.null(weight_col)) {
+      warning(
+        "Both candidate_weights and candidate_weight_col were provided for ",
+        label,
+        "; using candidate_weights and ignoring candidate_weight_col."
+      )
+    }
+
+    if (!is.null(weights_arg)) {
+      if (length(weights_arg) != nrow(candidates_obj)) {
+        stop(
+          "candidate_weights length does not match the number of candidate ",
+          label,
+          " records."
+        )
+      }
+      out <- weights_arg
+    } else if (!is.null(weight_col)) {
+      if (!(weight_col %in% colnames(candidates_obj))) {
+        stop(
+          "candidate_weight_col '",
+          weight_col,
+          "' is not present in candidate ",
+          label,
+          " attributes."
+        )
+      }
+      out <- candidates_obj[[weight_col]]
+    }
+
+    if (is.null(out)) {
+      return(NULL)
+    }
+
+    validate_numeric_weights(
+      out,
+      paste0("Candidate weights for ", label),
+      require_all_positive = TRUE
+    )
+  }
+
+  safe_divide_by_weights <- function(distances, w, label) {
+    w <- validate_numeric_weights(w, label, require_all_positive = FALSE)
+    out <- rep(NA_real_, length(distances))
+    pos <- w > 0
+    out[pos] <- distances[pos] / w[pos]
+    out
+  }
+
+  is_index_vector <- function(x) {
+    is.atomic(x) && is.numeric(x) && is.null(dim(x))
+  }
+
+  if (is.null(seed)) {
+    seed <- sample(10000, 1)
+  }
+
+  next_sampling_seed <- local({
+    current <- seed
+
+    function() {
+      set.seed(current)
+      current <<- current + 1
+    }
+  })
+
   # Identify candidates
   candidates_israster <- FALSE
   candidates_ispts <- FALSE
   candidates_isdf <- FALSE
   candidates_index <- FALSE
   candidates_use_index <- NULL
+  candidate_weights_use <- NULL
   if (!is.null(candidates)) {
     if (methods::is(candidates, "SpatRaster")) {
       candidates_israster <- TRUE
@@ -228,7 +344,7 @@ sample_kmeans <- function(
       candidates_isdf <- is.data.frame(candidates)
     }
     if (!candidates_isdf) {
-      if (is.vector(candidates) && is.integer(candidates)) {
+      if (is_index_vector(candidates)) {
         candidates_index <- TRUE
       }
     }
@@ -244,6 +360,32 @@ sample_kmeans <- function(
         if (terra::compareGeom(input, weights) == FALSE) {
           stop("Input and weights rasters do not match.")
         } else {
+          w_min <- terra::global(weights, "min", na.rm = TRUE) |>
+            unlist() |>
+            unname() |>
+            (
+              \(x) x[1]
+            )()
+          w_max <- terra::global(weights, "max", na.rm = TRUE) |>
+            unlist() |>
+            unname() |>
+            (
+              \(x) x[1]
+            )()
+
+          if (is.na(w_max)) {
+            stop("Weights raster contains only NA values.")
+          }
+          if (w_min < 0) {
+            stop("Weights raster must not contain negative values.")
+          }
+          if (w_max <= 0) {
+            stop(
+              "Weights raster must contain at least one value greater ",
+              "than zero."
+            )
+          }
+
           input <- c(input, weights)
           all_na <- !(
             input |>
@@ -287,6 +429,13 @@ sample_kmeans <- function(
         # selecting points.
       }
       if (candidates_ispts) {
+        candidate_weights_use <- resolve_candidate_weights(
+          candidates_obj = terra::values(candidates),
+          weights_arg = candidate_weights,
+          weight_col = candidate_weight_col,
+          label = "SpatVector"
+        )
+
         candidates_df <- candidates |>
           (\(y) {
             terra::extract(
@@ -304,6 +453,13 @@ sample_kmeans <- function(
             "candidates points."
           )
         }
+      } else if (
+        !is.null(candidate_weights) || !is.null(candidate_weight_col)
+      ) {
+        stop(
+          "Candidate weights are only supported when candidates are ",
+          "provided as an independent data.frame or SpatVector with points."
+        )
       }
     }
 
@@ -314,13 +470,20 @@ sample_kmeans <- function(
       ncells <- nrow(df)
       # Weighted raster resampling (if relevant) when ncells is NULL
       if (!is.null(weights)) {
+        prob_weights <- df[, ncol(df)]
+        validate_numeric_weights(
+          prob_weights,
+          "Weights for raster sampling",
+          require_all_positive = FALSE
+        )
         sampled_unique <- 0
         seed_loop <- seed
         while (sampled_unique < (clusters + 2)) {
+          next_sampling_seed()
           sampled <- sample(
             nrow(df),
             ncells,
-            prob = df[, ncol(df)],
+            prob = prob_weights,
             replace = TRUE
           )
           sampled_unique <- sampled |>
@@ -336,6 +499,7 @@ sample_kmeans <- function(
       }
       # Weighted sampling for raster input
       if (!is.null(weights)) {
+        next_sampling_seed()
         sample_pts <- input[[terra::nlyr(input)]] |>
           terra::mask(mask = sum(input)) |>
           terra::spatSample(
@@ -357,6 +521,7 @@ sample_kmeans <- function(
         ncells <- nrow(df)
       } else {
         # Non-weighted sampling for raster input
+        next_sampling_seed()
         df <- terra::spatSample(
           input,
           ncells,
@@ -372,6 +537,8 @@ sample_kmeans <- function(
 
   # Extraction for spatial points
   if (inputispoints) {
+    input_values_raw <- terra::values(input)
+
     if (!is.null(weights)) {
       # check weights
       if (!methods::is(weights, "SpatRaster") && !is.vector(weights)) {
@@ -381,13 +548,15 @@ sample_kmeans <- function(
         )
       }
       if (is.vector(weights)) {
-        if (length(input) != length(weights)) {
+        if (nrow(input) != length(weights)) {
           stop("The number of weights do not match the input points.")
         }
+        weights <- validate_numeric_weights(
+          weights,
+          "Weights for input points",
+          require_all_positive = FALSE
+        )
       } else {
-        input$weights <- weights
-      }
-      if (methods::is(weights, "SpatRaster")) {
         weights_sample <- terra::extract(
           x = weights,
           y = input,
@@ -395,8 +564,15 @@ sample_kmeans <- function(
           layer = 1
         ) |>
           (\(x) x[[1]])()
+
+        weights_sample[is.na(weights_sample)] <- 0
+        weights <- validate_numeric_weights(
+          weights_sample,
+          "Weights extracted from raster for input points",
+          require_all_positive = FALSE
+        )
+
         weights <- weights_sample
-        input$weights <- weights
       }
     }
 
@@ -410,6 +586,13 @@ sample_kmeans <- function(
         )
       }
       if (methods::is(candidates, "SpatRaster")) {
+        if (!is.null(candidate_weights) || !is.null(candidate_weight_col)) {
+          stop(
+            "Candidate weights are only supported when candidates are ",
+            "provided as an independent data.frame or SpatVector with points."
+          )
+        }
+
         candidates_sample <- terra::extract(
           x = candidates,
           y = input,
@@ -438,11 +621,27 @@ sample_kmeans <- function(
           candidates <- terra::project(candidates, terra::crs(input))
         }
 
-        input_values <- terra::values(input)
         cand_values <- terra::values(candidates)
+
+        candidate_weights_raw <- resolve_candidate_weights(
+          candidates_obj = cand_values,
+          weights_arg = candidate_weights,
+          weight_col = candidate_weight_col,
+          label = "SpatVector"
+        )
+
+        if (!is.null(candidate_weight_col) &&
+              (candidate_weight_col %in% colnames(cand_values))) {
+          cand_values <- cand_values[
+            ,
+            setdiff(colnames(cand_values), candidate_weight_col),
+            drop = FALSE
+          ]
+        }
+
         cand_values <- align_candidate_df(
           cand_values,
-          input_values,
+          input_values_raw,
           "input is points"
         )
 
@@ -455,15 +654,34 @@ sample_kmeans <- function(
         cand_xy$x <- round(cand_xy$x, 8)
         cand_xy$y <- round(cand_xy$y, 8)
 
-        input_key_df <- cbind(input_xy, input_values)
+        input_key_df <- cbind(input_xy, input_values_raw)
         cand_key_df <- cbind(cand_xy, cand_values)
         input_keys <- row_keys(input_key_df)
         cand_keys <- row_keys(cand_key_df)
 
         candidates_mapped <- match(cand_keys, input_keys)
-        candidates_use_index <- unique(
-          candidates_mapped[!is.na(candidates_mapped)]
-        )
+        valid_map <- !is.na(candidates_mapped)
+
+        if (!any(valid_map)) {
+          stop(
+            "No candidate points matched the input points with identical ",
+            "coordinates and attributes."
+          )
+        }
+
+
+      if (!is.null(weights)) {
+        input$weights <- weights
+      }
+        if (!is.null(candidate_weights_raw)) {
+          mapped_index <- candidates_mapped[valid_map]
+          mapped_weights <- candidate_weights_raw[valid_map]
+          keep <- !duplicated(mapped_index)
+          candidates_use_index <- mapped_index[keep]
+          candidate_weights_use <- mapped_weights[keep]
+        } else {
+          candidates_use_index <- unique(candidates_mapped[valid_map])
+        }
 
         if (length(candidates_use_index) == 0) {
           stop(
@@ -472,6 +690,13 @@ sample_kmeans <- function(
           )
         }
       } else {
+        if (!is.null(candidate_weights) || !is.null(candidate_weight_col)) {
+          stop(
+            "Candidate weights are only supported when candidates are ",
+            "provided as an independent data.frame or SpatVector with points."
+          )
+        }
+
         candidates <- unique(candidates)
         candidates <- candidates[!is.na(candidates)]
         candidates <- candidates[candidates == as.integer(candidates)]
@@ -503,6 +728,7 @@ sample_kmeans <- function(
         )
       } else {
         # standard sampling for points dataset
+        next_sampling_seed()
         sampled <- sample(nrow(df),
           ncells,
           replace = FALSE
@@ -511,13 +737,21 @@ sample_kmeans <- function(
       }
     } else {
       # weighted sampling for points dataset
+      prob_weights <- weights
+      validate_numeric_weights(
+        prob_weights,
+        "Weights for points sampling",
+        require_all_positive = FALSE
+      )
+
       sampled_unique <- 0
       seed_loop <- seed
       while (sampled_unique < (clusters + 2)) {
+        next_sampling_seed()
         sampled <- sample(
           x = nrow(df),
           ncells,
-          prob = df[, ncol(df)],
+          prob = prob_weights,
           replace = TRUE
         )
         sampled_unique <- sampled |>
@@ -531,6 +765,8 @@ sample_kmeans <- function(
 
   # Extraction for data frame
   if (inputisdf) {
+    input_df_raw <- input
+
     if (!is.null(weights)) {
       # check weights
       if (!is.vector(weights)) {
@@ -542,7 +778,11 @@ sample_kmeans <- function(
         if (nrow(input) != length(weights)) {
           stop("The number of weights do not match the input data.")
         } else {
-          input$weights <- weights
+          weights <- validate_numeric_weights(
+            weights,
+            "Weights for input data",
+            require_all_positive = FALSE
+          )
         }
       }
     }
@@ -555,18 +795,49 @@ sample_kmeans <- function(
           "a numeric vector or a data frame."
         )
       } else if (candidates_isdf) {
+        candidate_weights_raw <- resolve_candidate_weights(
+          candidates_obj = candidates,
+          weights_arg = candidate_weights,
+          weight_col = candidate_weight_col,
+          label = "data.frame"
+        )
+
+        candidates_match <- candidates
+        if (!is.null(candidate_weight_col) &&
+              (candidate_weight_col %in% colnames(candidates_match))) {
+          candidates_match <- candidates_match[
+            ,
+            setdiff(colnames(candidates_match), candidate_weight_col),
+            drop = FALSE
+          ]
+        }
+
         candidates_df <- align_candidate_df(
-          candidates,
-          input,
+          candidates_match,
+          input_df_raw,
           "input is a data frame"
         )
 
-        input_keys <- row_keys(input)
+        input_keys <- row_keys(input_df_raw)
         cand_keys <- row_keys(candidates_df)
-        candidates_use_index <- match(cand_keys, input_keys)
-        candidates_use_index <- unique(
-          candidates_use_index[!is.na(candidates_use_index)]
-        )
+        candidates_mapped <- match(cand_keys, input_keys)
+        valid_map <- !is.na(candidates_mapped)
+
+        if (!any(valid_map)) {
+          stop(
+            "No candidate rows matched input rows after column alignment."
+          )
+        }
+
+        if (!is.null(candidate_weights_raw)) {
+          mapped_index <- candidates_mapped[valid_map]
+          mapped_weights <- candidate_weights_raw[valid_map]
+          keep <- !duplicated(mapped_index)
+          candidates_use_index <- mapped_index[keep]
+          candidate_weights_use <- mapped_weights[keep]
+        } else {
+          candidates_use_index <- unique(candidates_mapped[valid_map])
+        }
 
         if (length(candidates_use_index) == 0) {
           stop(
@@ -574,6 +845,13 @@ sample_kmeans <- function(
           )
         }
       } else {
+        if (!is.null(candidate_weights) || !is.null(candidate_weight_col)) {
+          stop(
+            "Candidate weights are only supported when candidates are ",
+            "provided as an independent data.frame or SpatVector with points."
+          )
+        }
+
         candidates <- unique(candidates)
         candidates <- candidates[!is.na(candidates)]
         candidates <- candidates[candidates == as.integer(candidates)]
@@ -584,9 +862,13 @@ sample_kmeans <- function(
         if (length(candidates) == 0) {
           stop("No valid candidate indices for the input data.")
         }
-        candidates_df <- input[candidates, ]
+        candidates_df <- input_df_raw[candidates, ]
         candidates_use_index <- candidates
       }
+    }
+
+    if (!is.null(weights)) {
+      input$weights <- weights
     }
 
     # Sampling (if applicable)
@@ -606,6 +888,7 @@ sample_kmeans <- function(
         )
       } else {
         # standard sampling
+        next_sampling_seed()
         sampled <- sample(
           nrow(df),
           ncells,
@@ -615,13 +898,21 @@ sample_kmeans <- function(
       }
     } else {
       # weighted sampling
+      prob_weights <- weights
+      validate_numeric_weights(
+        prob_weights,
+        "Weights for data frame sampling",
+        require_all_positive = FALSE
+      )
+
       sampled_unique <- 0
       seed_loop <- seed
       while (sampled_unique < (clusters + 2)) {
+        next_sampling_seed()
         sampled <- sample(
           nrow(df),
           ncells,
-          prob = df[, ncol(df)],
+          prob = prob_weights,
           replace = TRUE
         )
         sampled_unique <- sampled |>
@@ -730,10 +1021,6 @@ sample_kmeans <- function(
   # Run kmeans
   if (verbose == TRUE) {
     message("Running k-means.")
-  }
-
-  if (is.null(seed)) {
-    seed <- sample(10000, 1)
   }
   if (is.null(initializer)) {
     initializer <- "kmeans++"
@@ -1084,15 +1371,27 @@ sample_kmeans <- function(
 
       names(s) <- c("clust", "dist")
 
-      zs <- s |>
+      s_eval <- s
+      if (!is.null(candidate_weights_use)) {
+        if (length(candidate_weights_use) != nrow(s_eval)) {
+          stop(
+            "Mapped candidate weights do not match extracted candidate ",
+            "records."
+          )
+        }
+        s_eval$dist <- s_eval$dist / candidate_weights_use
+      }
+
+      zs <- s_eval |>
         dplyr::group_by(.data$clust) |>
         dplyr::summarise(mindist = min(.data$dist, na.rm = TRUE)) |>
         dplyr::ungroup() |>
         dplyr::mutate(clust = as.integer(.data$clust)) |>
-        dplyr::select(.data$clust, .data$mindist)
+        dplyr::select(clust, mindist)
+      zs <- as.matrix(zs)
 
       # Find points for the cluster centers
-      pts <- apply(s, 1, FUN = findpoint)
+      pts <- apply(s_eval, 1, FUN = findpoint)
 
       out$points <- terra::crds(candidates) |>
         as.data.frame() |>
@@ -1141,7 +1440,11 @@ sample_kmeans <- function(
       if (verbose == TRUE) {
         message("Calculating weighted distances.")
       }
-      out$distances <- out$distances / weights
+      out$distances <- safe_divide_by_weights(
+        out$distances,
+        weights,
+        "Weights for input points"
+      )
     }
 
     # Find points for the cluster centers
@@ -1159,6 +1462,12 @@ sample_kmeans <- function(
         search_idx <- unique(candidates)
       }
       s_search <- s[search_idx, , drop = FALSE]
+      if (!is.null(candidate_weights_use)) {
+        if (length(candidate_weights_use) != nrow(s_search)) {
+          stop("Mapped candidate weights do not match candidate points.")
+        }
+        s_search[, 2] <- s_search[, 2] / candidate_weights_use
+      }
     }
 
     zs1 <- s_search[, 1] |>
@@ -1215,7 +1524,11 @@ sample_kmeans <- function(
       if (verbose == TRUE) {
         message("Calculating weighted distances.")
       }
-      out$distances <- out$distances / weights
+      out$distances <- safe_divide_by_weights(
+        out$distances,
+        weights,
+        "Weights for input data"
+      )
     }
 
     # Find the cluster centers for the dataframe
@@ -1233,6 +1546,12 @@ sample_kmeans <- function(
         search_idx <- unique(candidates)
       }
       s_search <- s[search_idx, , drop = FALSE]
+      if (!is.null(candidate_weights_use)) {
+        if (length(candidate_weights_use) != nrow(s_search)) {
+          stop("Mapped candidate weights do not match candidate rows.")
+        }
+        s_search[, 2] <- s_search[, 2] / candidate_weights_use
+      }
     }
 
     zs1 <- s_search[, 1] |>
