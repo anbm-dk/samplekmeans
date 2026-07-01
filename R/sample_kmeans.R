@@ -59,9 +59,7 @@
 #' @importFrom rlang .data
 #' @importFrom methods is
 #' @importFrom tidyr drop_na
-#' @importFrom terra nlyr spatSample compareGeom geomtype global mask
-#'   spatSample extract crds values init subset app writeRaster rast zonal vect
-#'   writeVector
+#' @importFrom terra nlyr spatSample compareGeom geomtype global mask spatSample extract crds values init subset app writeRaster rast zonal vect writeVector
 #' @importFrom ClusterR KMeans_rcpp MiniBatchKmeans
 #' @importFrom dplyr arrange mutate
 #' @importFrom fields rdist

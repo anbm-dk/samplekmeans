@@ -54,8 +54,8 @@ points(
 You can limit where cluster centers are selected by using the
 `candidates` argument.
 
-For `data.frame` input, `candidates` is a numeric vector of row
-indices. Selected centers are restricted to those rows.
+For `data.frame` input, `candidates` is a numeric vector of row indices.
+Selected centers are restricted to those rows.
 
 ``` r
 set.seed(42)
@@ -75,6 +75,10 @@ myclusters_df <- sample_kmeans(
 )
 
 myclusters_df$points
+#>   ID Index
+#> 1  1    15
+#> 2  2    67
+#> 3  3    42
 ```
 
 For point data (`SpatVector` with points), `candidates` can be either a
@@ -101,6 +105,10 @@ myclusters_pts <- sample_kmeans(
 )
 
 myclusters_pts$points
+#>           x          y ID Index
+#> 1 0.5488174 0.09068056  1    11
+#> 2 4.0172342 4.59700985  2   100
+#> 3 2.8191735 2.56777946  3    52
 ```
 
 If candidates do not cover all clusters, fewer centers can be returned.

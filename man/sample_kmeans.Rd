@@ -25,7 +25,7 @@ sample_kmeans(
   tol_kmeans = 1e-04,
   tol_opt = 0.3,
   seed = NULL,
-  MiniBatch = FALSE,
+  mini_batch = FALSE,
   batch_size = 10,
   init_frac = 1,
   early_stop = 10,
@@ -42,23 +42,40 @@ sample_kmeans(
 )
 }
 \arguments{
-\item{input}{An input \code{data.frame}, or a \code{SpatRaster} or \code{SpatVector} object created by package \link[terra:terra]{terra}. The input should contain only numeric variables for clustering.}
+\item{input}{An input \code{data.frame}, or a \code{SpatRaster} or \code{SpatVector}
+object created by package \link[terra:terra]{terra}. The input should contain only numeric
+variables for clustering.}
 
 \item{clusters}{Number of clusters.}
 
 \item{ncells}{Number of cells to extract, otherwise uses all cells.}
 
-\item{use_xy}{Should the geographic xy coordinates be used as variables for clustering?}
+\item{use_xy}{Should the geographic xy coordinates be used as variables for
+clustering?}
 
 \item{only_xy}{Should the algorithm Use only xy coordinates?}
 
-\item{weights}{A \code{SpatRaster} object or numeric vector with weights between 0 and 1.}
+\item{weights}{A \code{SpatRaster} object or numeric vector with weights between
+0 and 1.}
 
 \item{layer_weights}{Numeric vector with weights for each input parameter.}
 
-\item{xy_weight}{Numeric vector of weights for the x and y coordinates (repeated if length 1).}
+\item{xy_weight}{Numeric vector of weights for the x and y coordinates
+(repeated if length 1).}
 
-\item{candidates}{Candidate pool for selecting cluster centers. Supports numeric indices for rows/points in \code{input}; a \code{data.frame} when \code{input} is a \code{data.frame} (same column names and classes; column order can differ); a \code{SpatVector} with points when \code{input} is a \code{SpatVector} with points (same attribute names/classes; candidate CRS is reprojected to match input if needed); and a \code{SpatRaster} mask for spatial inputs. When candidates map to rows/points in \code{input}, center selection is constrained to those rows/points.}
+\item{candidates}{Candidate pool for selecting cluster centers. Supports:
+\itemize{
+\item numeric indices for rows/points in \code{input};
+\item a \code{data.frame} when \code{input} is a \code{data.frame} (same column names and
+classes; column order can differ);
+\item a \code{SpatVector} with points when \code{input} is a \code{SpatVector} with points
+(same attribute names/classes; candidate CRS is reprojected to match input if
+needed);
+\item a \code{SpatRaster} mask for spatial inputs.
+}
+
+When candidates map to rows/points in \code{input}, center selection is
+constrained to those rows/points.}
 
 \item{scale}{Center and scale variables.}
 
@@ -82,15 +99,14 @@ sample_kmeans(
 
 \item{seed}{See KMeans_rcpp.}
 
-\item{MiniBatch}{Use MiniBatchKmeans (fast, less accurate).}
-
 \item{batch_size}{See MiniBatchKmeans.}
 
 \item{init_frac}{See MiniBatchKmeans.}
 
 \item{early_stop}{See MiniBatchKmeans.}
 
-\item{filename_cl}{File names for rasters with clusters (1) and distances (2).}
+\item{filename_cl}{File names for rasters with clusters (1) and distances
+(2).}
 
 \item{args_cl}{List with arguments for writing raster.}
 
@@ -109,6 +125,8 @@ sample_kmeans(
 \item{cores}{Number of cpu cores to use.}
 
 \item{verbose}{Print messages during processing.}
+
+\item{MiniBatch}{Use MiniBatchKmeans (fast, less accurate).}
 }
 \description{
 Produces a set of points sampled from a raster or point dataset.
