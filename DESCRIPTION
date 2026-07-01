@@ -1,6 +1,6 @@
 Package: samplekmeans
 Title: Sampling with k-means
-Version: 0.1.0
+Version: 1.0.0
 Description: Functions to sample datasets based on the k-means algorithm.
 License: GPL (>= 3)
 Encoding: UTF-8

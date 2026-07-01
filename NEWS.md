@@ -1,5 +1,7 @@
 # samplekmeans development
 
+## samplekmeans 1.0.0
+
 * Added optional candidate weighting via `candidate_weights` and
     `candidate_weight_col` with explicit precedence (`candidate_weights`
     overrides column-based weights with a warning).
