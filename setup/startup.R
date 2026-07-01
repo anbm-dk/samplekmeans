@@ -35,7 +35,8 @@ R.version.string
 
 ## 2: Other stuff
 
-# usethis::use_readme_rmd()  # Creates and rmd for the readme, adds it to buildignore
+# Creates and rmd for the readme, adds it to buildignore
+# usethis::use_readme_rmd()  
 
 # usethis::use_news_md()
 
@@ -55,7 +56,7 @@ devtools::document()
 
 # devtools::run_examples()
 
-Sys.setenv('_R_CHECK_SYSTEM_CLOCK_' = 0)
+Sys.setenv("_R_CHECK_SYSTEM_CLOCK_" = 0)
 
 devtools::check(document = FALSE)
 
