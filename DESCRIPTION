@@ -20,6 +20,6 @@ Imports:
     tidyr,
     tools
 Authors@R: 
-    person("Anders Bjørn", "Møller", , "anbm@agro.au.dk", role = c("aut", "cre"),
+    person("Anders Bjørn", "Møller", , "anbm@seges.dk", role = c("aut", "cre"),
            comment = c(ORCID = "0000-0002-2737-5780"))
 Config/roxygen2/version: 8.0.0

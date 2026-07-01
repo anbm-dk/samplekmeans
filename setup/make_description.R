@@ -44,7 +44,7 @@ x$del("Authors@R")
 x$add_author(
   given = "Anders Bjørn",
   family = "Møller",
-  email = "anbm@agro.au.dk",
+  email = "anbm@seges.dk",
   orcid = "0000-0002-2737-5780",
   role = c("aut", "cre"),
 )
