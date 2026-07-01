@@ -670,9 +670,9 @@ sample_kmeans <- function(
         }
 
 
-      if (!is.null(weights)) {
-        input$weights <- weights
-      }
+        if (!is.null(weights)) {
+          input$weights <- weights
+        }
         if (!is.null(candidate_weights_raw)) {
           mapped_index <- candidates_mapped[valid_map]
           mapped_weights <- candidate_weights_raw[valid_map]
