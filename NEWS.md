@@ -1,5 +1,12 @@
 # samplekmeans development
 
+## samplekmeans 1.1.0
+
+* Merged `feature/prune-empty-small-clusters` into `main`.
+* Improved handling of small or empty clusters during center selection for
+    more robust sampling behavior.
+* Expanded and refreshed tests/documentation to cover the updated behavior.
+
 ## samplekmeans 1.0.0
 
 * Added optional candidate weighting via `candidate_weights` and
