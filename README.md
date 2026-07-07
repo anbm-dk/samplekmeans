@@ -122,4 +122,10 @@ myclusters_pts$points
 #> 3 2.8191735 2.56777946  3    52
 ```
 
-If candidates do not cover all clusters, fewer centers can be returned.
+If candidates do not cover all clusters, uncovered clusters are removed and
+their rows/cells are reassigned to surviving clusters. Cluster IDs are then
+renumbered to `1..K`.
+
+You can also enforce a minimum cluster size with `min_cluster_size`. Clusters
+with fewer assigned rows/cells than this threshold are removed and reassigned
+in the same way.

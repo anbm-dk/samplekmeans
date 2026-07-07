@@ -16,6 +16,7 @@ sample_kmeans(
   candidates = NULL,
   candidate_weights = NULL,
   candidate_weight_col = NULL,
+  min_cluster_size = 1,
   scale = TRUE,
   pca = FALSE,
   tol_pca = 0,
@@ -87,6 +88,10 @@ candidate records. Supported when \code{candidates} is an independent
 column in candidate attributes. If both \code{candidate_weights} and
 \code{candidate_weight_col} are provided, \code{candidate_weights} takes
 precedence.}
+
+\item{min_cluster_size}{Minimum number of assigned rows/cells required to
+retain a cluster. Clusters below this size are deleted and reassigned to the
+nearest surviving cluster.}
 
 \item{scale}{Center and scale variables.}
 

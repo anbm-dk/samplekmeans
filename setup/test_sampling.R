@@ -32,6 +32,25 @@ assert_same_sample <- function(out1, out2, label) {
   )
 }
 
+assert_error <- function(expr, pattern, label) {
+  err <- tryCatch(
+    {
+      force(expr)
+      NULL
+    },
+    error = function(e) e
+  )
+  assert_true(!is.null(err), paste0(label, ": expected an error."))
+  assert_true(
+    grepl(pattern, conditionMessage(err), fixed = TRUE),
+    paste0(
+      label,
+      ": error message mismatch. Got: ",
+      conditionMessage(err)
+    )
+  )
+}
+
 cat("Running focused sampling smoke tests...\n")
 
 # 1) raster input smoke test
@@ -233,5 +252,45 @@ assert_true(
 )
 
 cat("PASS: raster weighted seeded sampling is reproducible.\n")
+
+# 9) min_cluster_size prunes undersized clusters and reassigns all rows
+set.seed(225)
+df_small_cluster <- data.frame(
+  a = c(rnorm(60, -3, 0.2), rnorm(60, 0, 0.2), rnorm(5, 4, 0.1)),
+  b = c(rnorm(60, -3, 0.2), rnorm(60, 0, 0.2), rnorm(5, 4, 0.1))
+)
+
+df_min_out <- sample_kmeans(
+  input = df_small_cluster,
+  clusters = 3,
+  min_cluster_size = 10,
+  seed = 225
+)
+
+cluster_sizes <- table(df_min_out$clusters)
+assert_true(
+  all(cluster_sizes >= 10),
+  "min_cluster_size test: found clusters smaller than requested minimum."
+)
+assert_true(
+  nrow(df_min_out$points) == length(cluster_sizes),
+  "min_cluster_size test: number of selected centers does not match final clusters."
+)
+
+cat("PASS: min_cluster_size prunes undersized clusters.\n")
+
+# 10) min_cluster_size that removes all clusters should fail clearly
+assert_error(
+  sample_kmeans(
+    input = iris[, 1:4],
+    clusters = 3,
+    min_cluster_size = 500,
+    seed = 226
+  ),
+  "All clusters were removed by candidate constraints and/or min_cluster_size.",
+  "min_cluster_size all-removed error test"
+)
+
+cat("PASS: min_cluster_size all-removed case throws error.\n")
 
 cat("All focused sampling smoke tests passed.\n")
