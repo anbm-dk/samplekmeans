@@ -293,4 +293,39 @@ assert_error(
 
 cat("PASS: min_cluster_size all-removed case throws error.\n")
 
+# 11) raster min_cluster_size reassignment should complete without writeValues
+f_r <- system.file("ex/elev.tif", package = "terra")
+r_min <- terra::rast(f_r)
+
+r_min_out <- sample_kmeans(
+  input = r_min,
+  clusters = 10,
+  use_xy = TRUE,
+  min_cluster_size = 300,
+  seed = 227
+)
+
+assert_true(
+  methods::is(r_min_out$clusters, "SpatRaster"),
+  "raster min_cluster_size test: clusters output is not a SpatRaster."
+)
+
+r_vals <- terra::values(r_min_out$clusters, mat = FALSE)
+r_vals <- r_vals[!is.na(r_vals)]
+
+assert_true(
+  length(r_vals) > 0,
+  "raster min_cluster_size test: clusters output contains no non-NA values."
+)
+
+assert_true(
+  all(is.finite(r_vals) & (r_vals > 0) & (r_vals == as.integer(r_vals))),
+  paste0(
+    "raster min_cluster_size test: clusters contain values that are not ",
+    "positive integers."
+  )
+)
+
+cat("PASS: raster min_cluster_size reassignment regression test.\n")
+
 cat("All focused sampling smoke tests passed.\n")

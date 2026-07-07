@@ -1415,69 +1415,53 @@ sample_kmeans <- function(
       remap <- terra::app(input, fun = map_valid_fun)
 
       remap_clusters <- terra::app(remap[[1]], fun = function(x) {
-        if (is.na(x)) {
-          NA
-        } else {
-          valid_clusters[as.integer(x)]
-        }
+        out <- rep(NA_real_, length(x))
+        ok <- !is.na(x)
+        out[ok] <- valid_clusters[as.integer(x[ok])]
+        out
       })
       remap_distances <- remap[[2]]
 
       if (!is.null(weights)) {
-        calc_wdist <- function(x) {
-          if (x |> sum() |> is.na()) {
-            NA
-          } else {
-            if (x[2] == 0) {
-              NA
-            } else {
-              x[1] / x[2]
-            }
-          }
-        }
-        remap_distances <- terra::app(
+        remap_distances <- terra::lapp(
           c(remap_distances, weights),
-          fun = calc_wdist
+          fun = function(dist_val, weight_val) {
+            out <- rep(NA_real_, length(dist_val))
+            ok <- !is.na(dist_val) & !is.na(weight_val) & (weight_val != 0)
+            out[ok] <- dist_val[ok] / weight_val[ok]
+            out
+          }
         )
       }
 
       clusters_before_reassign <- out$clusters
 
-      out$clusters <- terra::app(
-        c(
-          clusters_before_reassign,
-          remap_clusters
-        ),
-        fun = function(x) {
-          if (is.na(x[1])) {
-            NA
-          } else if (x[1] %in% invalid_clusters) {
-            x[2]
-          } else {
-            x[1]
-          }
+      out$clusters <- terra::lapp(
+        c(clusters_before_reassign, remap_clusters),
+        fun = function(base_cluster, remap_cluster) {
+          out <- base_cluster
+          idx <- !is.na(base_cluster) & (base_cluster %in% invalid_clusters)
+          out[idx] <- remap_cluster[idx]
+          out
         }
       )
 
-      out$distances <- terra::app(
+      out$distances <- terra::lapp(
         c(clusters_before_reassign, out$distances, remap_distances),
-        fun = function(x) {
-          if (is.na(x[1])) {
-            NA
-          } else if (x[1] %in% invalid_clusters) {
-            x[3]
-          } else {
-            x[2]
-          }
+        fun = function(base_cluster, old_distance, remap_distance) {
+          out <- old_distance
+          out[is.na(base_cluster)] <- NA
+          idx <- !is.na(base_cluster) & (base_cluster %in% invalid_clusters)
+          out[idx] <- remap_distance[idx]
+          out
         }
       )
 
       out$clusters <- terra::app(out$clusters, fun = function(x) {
-        if (is.na(x)) {
-          NA
-        } else {
-          match(as.integer(x), valid_clusters)
-        }
+        out <- rep(NA_real_, length(x))
+        ok <- !is.na(x)
+        out[ok] <- match(as.integer(x[ok]), valid_clusters)
+        out
       })
 
       final_vals <- terra::values(out$clusters, mat = FALSE)

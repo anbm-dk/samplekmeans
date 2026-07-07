@@ -1,7 +1,7 @@
 
-<!-- README.md is generated from README.Rmd. Please edit that file -->
-
 # samplekmeans
+
+<!-- README.md is generated from README.Rmd. Please edit that file -->
 
 The goal of `samplekmeans` is to facilitate data sampling with the
 k-means algorithm. Spatial data are the main focus, but other data types
@@ -87,9 +87,9 @@ myclusters_df <- sample_kmeans(
 
 myclusters_df$points
 #>   ID Index
-#> 1  1    15
+#> 1  1    42
 #> 2  2    67
-#> 3  3    42
+#> 3  3    15
 ```
 
 For point data (`SpatVector` with points), `candidates` can be either a
@@ -117,15 +117,15 @@ myclusters_pts <- sample_kmeans(
 
 myclusters_pts$points
 #>           x          y ID Index
-#> 1 0.5488174 0.09068056  1    11
-#> 2 4.0172342 4.59700985  2   100
-#> 3 2.8191735 2.56777946  3    52
+#> 1 4.0172342 4.59700985  1   100
+#> 2 2.8191735 2.56777946  2    52
+#> 3 0.5488174 0.09068056  3    11
 ```
 
-If candidates do not cover all clusters, uncovered clusters are removed and
-their rows/cells are reassigned to surviving clusters. Cluster IDs are then
-renumbered to `1..K`.
+If candidates do not cover all clusters, uncovered clusters are removed
+and their rows/cells are reassigned to surviving clusters. Cluster IDs
+are then renumbered to `1..K`.
 
-You can also enforce a minimum cluster size with `min_cluster_size`. Clusters
-with fewer assigned rows/cells than this threshold are removed and reassigned
-in the same way.
+You can also enforce a minimum cluster size with `min_cluster_size`.
+Clusters with fewer assigned rows/cells than this threshold are removed
+and reassigned in the same way.
