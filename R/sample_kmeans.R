@@ -43,6 +43,9 @@
 #' @param candidate_weight_col Optional name of a numeric, positive weight
 #' column in candidate attributes. If both `candidate_weights` and
 #' `candidate_weight_col` are provided, `candidate_weights` takes precedence.
+#' @param min_cluster_size Minimum number of assigned rows/cells required to
+#' retain a cluster. Clusters below this size are deleted and reassigned to
+#' the nearest surviving cluster.
 #' @param scale Center and scale variables.
 #' @param pca Use principal component analysis on variables.
 #' @param tol_pca Tolerance for pca (remove PCs below threshold).
@@ -95,6 +98,7 @@ sample_kmeans <- function(
   candidates = NULL,
   candidate_weights = NULL,
   candidate_weight_col = NULL,
+  min_cluster_size = 1,
   scale = TRUE, # Center and scale variables
   pca = FALSE, # Use principal component analysis on variables
   tol_pca = 0, # Tolerance for pca (remove PCs below threshold)
@@ -304,12 +308,87 @@ sample_kmeans <- function(
     out
   }
 
+  compute_cluster_eval <- function(
+    cluster_ids,
+    eval_distances,
+    candidate_mask,
+    candidate_weights = NULL
+  ) {
+    ok <- !is.na(cluster_ids) & !is.na(eval_distances) & candidate_mask
+    if (!any(ok)) {
+      return(data.frame(clust = integer(0), mindist = numeric(0)))
+    }
+
+    d <- data.frame(
+      clust = as.integer(cluster_ids[ok]),
+      dist = as.numeric(eval_distances[ok])
+    )
+    if (!is.null(candidate_weights)) {
+      d$dist <- d$dist / as.numeric(candidate_weights[ok])
+    }
+
+    stats::aggregate(
+      d$dist,
+      by = list(clust = d$clust),
+      FUN = min
+    ) |>
+      (
+        \(x) data.frame(clust = as.integer(x$clust), mindist = as.numeric(x$x))
+      )() |>
+      dplyr::arrange(.data$clust)
+  }
+
+  cluster_size_df <- function(cluster_ids) {
+    cl <- as.integer(cluster_ids[!is.na(cluster_ids)])
+    if (length(cl) == 0) {
+      return(data.frame(clust = integer(0), size = integer(0)))
+    }
+    tab <- table(cl)
+    data.frame(
+      clust = as.integer(names(tab)),
+      size = as.integer(tab)
+    )
+  }
+
+  candidate_mask_from_index <- function(n, idx = NULL) {
+    mask <- rep(TRUE, n)
+    if (!is.null(idx)) {
+      mask <- rep(FALSE, n)
+      mask[idx] <- TRUE
+    }
+    mask
+  }
+
+  renumber_clusters <- function(cluster_ids) {
+    kept <- sort(unique(as.integer(cluster_ids[!is.na(cluster_ids)])))
+    map <- setNames(seq_along(kept), kept)
+    out <- as.integer(cluster_ids)
+    non_na <- !is.na(out)
+    out[non_na] <- as.integer(map[as.character(out[non_na])])
+    out
+  }
+
   is_index_vector <- function(x) {
     is.atomic(x) && is.numeric(x) && is.null(dim(x))
   }
 
   if (is.null(seed)) {
     seed <- sample(10000, 1)
+  }
+
+  if (
+    length(min_cluster_size) != 1 ||
+      !is.numeric(min_cluster_size) ||
+      !is.finite(min_cluster_size)
+  ) {
+    stop("min_cluster_size must be a single finite number.")
+  }
+  if (min_cluster_size != as.integer(min_cluster_size)) {
+    stop("min_cluster_size must be an integer.")
+  }
+  min_cluster_size <- as.integer(min_cluster_size)
+  if (min_cluster_size < 1) {
+    stop("min_cluster_size must be at least 1.")
   }
 
   next_sampling_seed <- local({
@@ -1083,66 +1162,37 @@ sample_kmeans <- function(
     as.data.frame() |>
     tidyr::drop_na()
 
-  # Functions to map clusters
-  if (pca == FALSE && scale == FALSE) {
-    map_clusters_fun <- function(x) {
-      if (x |> sum() |> is.na()) {
-        c(NA, NA)
-      } else {
-        dist <- x |>
-          matrix(1) |>
-          data.frame() |>
-          fields::rdist(mycentroids)
-        c(which.min(dist), min(dist, na.rm = TRUE))
-      }
+  row_distance_to_centroids <- function(x, centroids_use) {
+    if (x |> sum() |> is.na()) {
+      return(c(NA, NA))
+    }
+
+    row_df <- matrix(x, 1) |>
+      data.frame()
+
+    if (scale == TRUE) {
+      row_df <- row_df |>
+        sweep(MARGIN = 2, STATS = means, check.margin = FALSE) |>
+        sweep(MARGIN = 2, FUN = "/", STATS = sds, check.margin = FALSE)
+    }
+
+    if (pca == TRUE) {
+      colnames(row_df) <- pcs$rotation |> rownames()
+      row_df <- stats::predict(pcs, newdata = row_df)
+    }
+
+    dist <- fields::rdist(row_df, centroids_use)
+    c(which.min(dist), min(dist, na.rm = TRUE))
+  }
+
+  make_map_clusters_fun <- function(centroids_use) {
+    function(x) {
+      row_distance_to_centroids(x, centroids_use)
     }
   }
-  if (pca == FALSE && scale == TRUE) {
-    map_clusters_fun <- function(x) {
-      if (x |> sum() |> is.na()) {
-        c(NA, NA)
-      } else {
-        dist <- x |>
-          (\(v) (v - means) / sds)() |>
-          matrix(1) |>
-          data.frame() |>
-          fields::rdist(mycentroids)
-        c(which.min(dist), min(dist, na.rm = TRUE))
-      }
-    }
-  }
-  if (pca == TRUE && scale == FALSE) {
-    map_clusters_fun <- function(x) {
-      if (x |> sum() |> is.na()) {
-        c(NA, NA)
-      } else {
-        x <- x |>
-          matrix(1) |>
-          data.frame()
-        colnames(x) <- pcs$rotation |> rownames()
-        dist <- x |>
-          stats::predict(pcs, newdata = x) |>
-          fields::rdist(mycentroids)
-        c(which.min(dist), min(dist, na.rm = TRUE))
-      }
-    }
-  }
-  if (pca == TRUE && scale == TRUE) {
-    map_clusters_fun <- function(x) {
-      if (x |> sum() |> is.na()) {
-        c(NA, NA)
-      } else {
-        x <- x |>
-          (\(v) (v - means) / sds)() |>
-          matrix(1) |>
-          data.frame()
-        colnames(x) <- pcs$rotation |> rownames()
-        dist <- stats::predict(pcs, newdata = x) |>
-          fields::rdist(mycentroids)
-        c(which.min(dist), min(dist, na.rm = TRUE))
-      }
-    }
-  }
+
+  map_clusters_fun <- make_map_clusters_fun(mycentroids)
+
   # Function to find cluster centers
   findpoint <- function(x) {
     if (x |> sum() |> is.na()) {
@@ -1301,6 +1351,157 @@ sample_kmeans <- function(
       out$clusters <- terra::rast(filename_cl)
     }
 
+    cluster_vals <- terra::values(out$clusters, mat = FALSE)
+    size_df <- cluster_size_df(cluster_vals)
+
+    if (candidates_ispts) {
+      cand_eval <- terra::extract(
+        x = c(out$clusters, out$distances),
+        y = candidates,
+        ID = FALSE,
+        xy = FALSE
+      )
+
+      cand_w_eval <- NULL
+      if (!is.null(candidate_weights_use)) {
+        cand_w_eval <- candidate_weights_use
+      }
+      eval_df <- compute_cluster_eval(
+        cand_eval[, 1],
+        cand_eval[, 2],
+        rep(TRUE, nrow(cand_eval)),
+        cand_w_eval
+      )
+    } else if (candidates_israster) {
+      distmask_eval <- terra::mask(out$distances, candidates)
+      clustmask_eval <- terra::mask(out$clusters, candidates)
+      eval_raw <- terra::zonal(
+        distmask_eval,
+        clustmask_eval,
+        "min",
+        na.rm = TRUE
+      )
+      eval_df <- data.frame(
+        clust = as.integer(eval_raw[, 1]),
+        mindist = as.numeric(eval_raw[, 2])
+      )
+    } else {
+      eval_raw <- terra::zonal(out$distances, out$clusters, "min", na.rm = TRUE)
+      eval_df <- data.frame(
+        clust = as.integer(eval_raw[, 1]),
+        mindist = as.numeric(eval_raw[, 2])
+      )
+    }
+
+    viable_clusters <- eval_df$clust
+    small_clusters <- size_df$clust[size_df$size < min_cluster_size]
+    invalid_clusters <- sort(unique(c(
+      setdiff(size_df$clust, viable_clusters),
+      small_clusters
+    )))
+
+    if (length(invalid_clusters) > 0) {
+      valid_clusters <- sort(setdiff(size_df$clust, invalid_clusters))
+      if (length(valid_clusters) == 0) {
+        stop(
+          "All clusters were removed by candidate constraints and/or ",
+          "min_cluster_size."
+        )
+      }
+
+      map_valid_fun <- make_map_clusters_fun(
+        mycentroids[valid_clusters, , drop = FALSE]
+      )
+      remap <- terra::app(input, fun = map_valid_fun)
+
+      remap_clusters <- terra::app(remap[[1]], fun = function(x) {
+        out <- rep(NA_real_, length(x))
+        ok <- !is.na(x)
+        out[ok] <- valid_clusters[as.integer(x[ok])]
+        out
+      })
+      remap_distances <- remap[[2]]
+
+      if (!is.null(weights)) {
+        remap_distances <- terra::lapp(
+          c(remap_distances, weights),
+          fun = function(dist_val, weight_val) {
+            out <- rep(NA_real_, length(dist_val))
+            ok <- !is.na(dist_val) & !is.na(weight_val) & (weight_val != 0)
+            out[ok] <- dist_val[ok] / weight_val[ok]
+            out
+          }
+        )
+      }
+
+      clusters_before_reassign <- out$clusters
+
+      out$clusters <- terra::lapp(
+        c(clusters_before_reassign, remap_clusters),
+        fun = function(base_cluster, remap_cluster) {
+          out <- base_cluster
+          idx <- !is.na(base_cluster) & (base_cluster %in% invalid_clusters)
+          out[idx] <- remap_cluster[idx]
+          out
+        }
+      )
+
+      out$distances <- terra::lapp(
+        c(clusters_before_reassign, out$distances, remap_distances),
+        fun = function(base_cluster, old_distance, remap_distance) {
+          out <- old_distance
+          out[is.na(base_cluster)] <- NA
+          idx <- !is.na(base_cluster) & (base_cluster %in% invalid_clusters)
+          out[idx] <- remap_distance[idx]
+          out
+        }
+      )
+
+      out$clusters <- terra::app(out$clusters, fun = function(x) {
+        out <- rep(NA_real_, length(x))
+        ok <- !is.na(x)
+        out[ok] <- match(as.integer(x[ok]), valid_clusters)
+        out
+      })
+
+      final_vals <- terra::values(out$clusters, mat = FALSE)
+      final_k <- length(unique(final_vals[!is.na(final_vals)]))
+      if (final_k < clusters) {
+        warning(
+          "Requested ", clusters,
+          " clusters, but returned ", final_k,
+          " after removing empty/undersized clusters."
+        )
+      }
+    }
+
+    if (!is.null(filename_d)) {
+      do.call(
+        terra::writeRaster,
+        args = c(
+          list(
+            x = out$distances,
+            filename = filename_d
+          ),
+          args_d
+        )
+      )
+      out$distances <- terra::rast(filename_d)
+    }
+    if (!is.null(filename_cl)) {
+      do.call(
+        terra::writeRaster,
+        args = c(
+          list(
+            x = out$clusters,
+            filename = filename_cl
+          ),
+          args_d
+        )
+      )
+      out$clusters <- terra::rast(filename_cl)
+    }
+
     # Find the cluster centers for raster input
     if (verbose == TRUE) {
       message("Identifying cluster centers.")
@@ -1384,10 +1585,14 @@ sample_kmeans <- function(
 
       zs <- s_eval |>
         dplyr::group_by(.data$clust) |>
-        dplyr::summarise(mindist = min(.data$dist, na.rm = TRUE)) |>
-        dplyr::ungroup() |>
-        dplyr::mutate(clust = as.integer(.data$clust)) |>
-        dplyr::select(clust, mindist)
+        dplyr::summarise(
+          mindist = min(.data$dist, na.rm = TRUE),
+          .groups = "drop"
+        )
+      zs <- data.frame(
+        clust = as.integer(zs$clust),
+        mindist = as.numeric(zs$mindist)
+      )
       zs <- as.matrix(zs)
 
       # Find points for the cluster centers
@@ -1447,6 +1652,85 @@ sample_kmeans <- function(
       )
     }
 
+    search_idx <- seq_along(out$clusters)
+    if (!is.null(candidates)) {
+      if (!is.null(candidates_use_index)) {
+        search_idx <- candidates_use_index
+      } else {
+        search_idx <- unique(candidates)
+      }
+    }
+    candidate_mask <- candidate_mask_from_index(
+      length(out$clusters),
+      search_idx
+    )
+    candidate_weights_eval <- NULL
+    if (!is.null(candidate_weights_use)) {
+      candidate_weights_eval <- rep(NA_real_, length(out$clusters))
+      candidate_weights_eval[search_idx] <- candidate_weights_use
+    }
+
+    size_df <- cluster_size_df(out$clusters)
+    eval_df <- compute_cluster_eval(
+      out$clusters,
+      out$distances,
+      candidate_mask,
+      candidate_weights_eval
+    )
+    viable_clusters <- eval_df$clust
+    small_clusters <- size_df$clust[size_df$size < min_cluster_size]
+    invalid_clusters <- sort(unique(c(
+      setdiff(size_df$clust, viable_clusters),
+      small_clusters
+    )))
+
+    if (length(invalid_clusters) > 0) {
+      valid_clusters <- sort(setdiff(size_df$clust, invalid_clusters))
+      if (length(valid_clusters) == 0) {
+        stop(
+          "All clusters were removed by candidate constraints and/or ",
+          "min_cluster_size."
+        )
+      }
+
+      idx_move <- which(out$clusters %in% invalid_clusters)
+      if (length(idx_move) > 0) {
+        points_features <- terra::values(input)
+        map_valid_fun <- make_map_clusters_fun(
+          mycentroids[valid_clusters, , drop = FALSE]
+        )
+        remap <- apply(
+          points_features[idx_move, , drop = FALSE],
+          1,
+          map_valid_fun
+        ) |>
+          t()
+
+        new_idx <- as.integer(remap[, 1])
+        new_dist <- as.numeric(remap[, 2])
+        if (!is.null(weights)) {
+          w_sub <- weights[idx_move]
+          dist_sub <- rep(NA_real_, length(new_dist))
+          pos <- w_sub > 0
+          dist_sub[pos] <- new_dist[pos] / w_sub[pos]
+          new_dist <- dist_sub
+        }
+
+        out$clusters[idx_move] <- valid_clusters[new_idx]
+        out$distances[idx_move] <- new_dist
+      }
+
+      out$clusters <- renumber_clusters(out$clusters)
+      final_k <- length(unique(out$clusters[!is.na(out$clusters)]))
+      if (final_k < clusters) {
+        warning(
+          "Requested ", clusters,
+          " clusters, but returned ", final_k,
+          " after removing empty/undersized clusters."
+        )
+      }
+    }
+
     # Find points for the cluster centers
     if (verbose == TRUE) {
       message("Identifying cluster centers.")
@@ -1454,13 +1738,7 @@ sample_kmeans <- function(
     s <- cbind(out$clusters, out$distances)
 
     s_search <- s
-    search_idx <- seq_len(nrow(s))
     if (!is.null(candidates)) {
-      if (!is.null(candidates_use_index)) {
-        search_idx <- candidates_use_index
-      } else {
-        search_idx <- unique(candidates)
-      }
       s_search <- s[search_idx, , drop = FALSE]
       if (!is.null(candidate_weights_use)) {
         if (length(candidate_weights_use) != nrow(s_search)) {
@@ -1531,6 +1809,80 @@ sample_kmeans <- function(
       )
     }
 
+    search_idx <- seq_along(out$clusters)
+    if (!is.null(candidates)) {
+      if (!is.null(candidates_use_index)) {
+        search_idx <- candidates_use_index
+      } else {
+        search_idx <- unique(candidates)
+      }
+    }
+    candidate_mask <- candidate_mask_from_index(
+      length(out$clusters),
+      search_idx
+    )
+    candidate_weights_eval <- NULL
+    if (!is.null(candidate_weights_use)) {
+      candidate_weights_eval <- rep(NA_real_, length(out$clusters))
+      candidate_weights_eval[search_idx] <- candidate_weights_use
+    }
+
+    size_df <- cluster_size_df(out$clusters)
+    eval_df <- compute_cluster_eval(
+      out$clusters,
+      out$distances,
+      candidate_mask,
+      candidate_weights_eval
+    )
+    viable_clusters <- eval_df$clust
+    small_clusters <- size_df$clust[size_df$size < min_cluster_size]
+    invalid_clusters <- sort(unique(c(
+      setdiff(size_df$clust, viable_clusters),
+      small_clusters
+    )))
+
+    if (length(invalid_clusters) > 0) {
+      valid_clusters <- sort(setdiff(size_df$clust, invalid_clusters))
+      if (length(valid_clusters) == 0) {
+        stop(
+          "All clusters were removed by candidate constraints and/or ",
+          "min_cluster_size."
+        )
+      }
+
+      idx_move <- which(out$clusters %in% invalid_clusters)
+      if (length(idx_move) > 0) {
+        map_valid_fun <- make_map_clusters_fun(
+          mycentroids[valid_clusters, , drop = FALSE]
+        )
+        remap <- apply(input[idx_move, , drop = FALSE], 1, map_valid_fun) |>
+          t()
+
+        new_idx <- as.integer(remap[, 1])
+        new_dist <- as.numeric(remap[, 2])
+        if (!is.null(weights)) {
+          w_sub <- weights[idx_move]
+          dist_sub <- rep(NA_real_, length(new_dist))
+          pos <- w_sub > 0
+          dist_sub[pos] <- new_dist[pos] / w_sub[pos]
+          new_dist <- dist_sub
+        }
+
+        out$clusters[idx_move] <- valid_clusters[new_idx]
+        out$distances[idx_move] <- new_dist
+      }
+
+      out$clusters <- renumber_clusters(out$clusters)
+      final_k <- length(unique(out$clusters[!is.na(out$clusters)]))
+      if (final_k < clusters) {
+        warning(
+          "Requested ", clusters,
+          " clusters, but returned ", final_k,
+          " after removing empty/undersized clusters."
+        )
+      }
+    }
+
     # Find the cluster centers for the dataframe
     if (verbose == TRUE) {
       message("Identifying cluster centers.")
@@ -1538,13 +1890,7 @@ sample_kmeans <- function(
     s <- cbind(out$clusters, out$distances)
 
     s_search <- s
-    search_idx <- seq_len(nrow(s))
     if (!is.null(candidates)) {
-      if (!is.null(candidates_use_index)) {
-        search_idx <- candidates_use_index
-      } else {
-        search_idx <- unique(candidates)
-      }
       s_search <- s[search_idx, , drop = FALSE]
       if (!is.null(candidate_weights_use)) {
         if (length(candidate_weights_use) != nrow(s_search)) {

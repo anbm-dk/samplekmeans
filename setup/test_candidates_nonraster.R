@@ -66,8 +66,8 @@ assert_true(nrow(df_out$points) >= 1, "data.frame test: no centers returned.")
 
 cat("PASS: data.frame candidates constrain selected centers.\n")
 
-# 2) data.frame partial coverage: fewer centers allowed when some
-# clusters have no candidates. Candidates from one compact region only.
+# 2) data.frame partial coverage: uncovered clusters are removed and
+# reassigned to covered clusters.
 df_candidates_partial <- as.integer(1:15)
 
 df_out_partial <- sample_kmeans(
@@ -83,12 +83,18 @@ assert_in_candidates(
   "data.frame partial test"
 )
 assert_true(
-  nrow(df_out_partial$points) < 3,
-  "data.frame partial test: expected fewer than requested clusters when
-    candidates do not cover all clusters."
+  nrow(df_out_partial$points) == 1,
+  paste0(
+    "data.frame partial test: expected a single surviving cluster when ",
+    "candidates cover only one region."
+  )
+)
+assert_true(
+  length(unique(df_out_partial$clusters[!is.na(df_out_partial$clusters)])) == 1,
+  "data.frame partial test: expected all rows reassigned to one cluster."
 )
 
-cat("PASS: data.frame partial candidates return fewer centers.\n")
+cat("PASS: data.frame partial candidates are pruned and reassigned.\n")
 
 # 3) spatial points input with numeric candidate indices
 set.seed(99)
@@ -173,15 +179,18 @@ assert_in_candidates(
   "points raster candidates test"
 )
 assert_true(
-  nrow(pts_out_mask$points) < 3,
+  nrow(pts_out_mask$points) == 1,
   paste0(
-    "points raster candidates test: expected fewer than ",
-    "requested clusters when mask does not cover all clusters."
+    "points raster candidates test: expected one surviving cluster ",
+    "when mask covers one region."
   )
 )
+assert_true(
+  length(unique(pts_out_mask$clusters[!is.na(pts_out_mask$clusters)])) == 1,
+  "points raster candidates test: expected all points reassigned to one cluster."
+)
 
-cat("PASS: points raster candidates constrain centers and allow",
-    "fewer centers.\n")
+cat("PASS: points raster candidates trigger pruning and reassignment.\n")
 
 # 5) data.frame input with candidates as data.frame
 # Candidate columns can be reordered but names/classes must match input.
