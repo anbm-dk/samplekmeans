@@ -451,7 +451,7 @@ sample_kmeans <- function(
 
       # Refresh centroids of clusters that just gained members, so any
       # further pruning in this loop reassigns against their true centers.
-      centroids_all <- recompute_centroids_for_clusters(
+      centroids_all <- recompute_centroids(
         cluster_ids = cluster_ids,
         feature_values = feature_values,
         weights = weights,
@@ -489,7 +489,7 @@ sample_kmeans <- function(
   # Recomputes the centroid of each affected cluster from its current
   # members (weighted mean when weights are supplied), so distances used
   # for later reassignments reflect the true, shifted cluster centers.
-  recompute_centroids_for_clusters <- function(
+  recompute_centroids <- function(
     cluster_ids,
     feature_values,
     weights,
@@ -1590,7 +1590,7 @@ sample_kmeans <- function(
 
       # Reflect the newly added members in their destination centroids
       # before these centroids are used for any further pruning.
-      mycentroids <- recompute_centroids_for_clusters(
+      mycentroids <- recompute_centroids(
         cluster_ids = cluster_vals,
         feature_values = feature_vals,
         weights = weight_vals,
@@ -1865,7 +1865,7 @@ sample_kmeans <- function(
 
       # Reflect the newly added members in their destination centroids
       # before these centroids are used for any further pruning.
-      mycentroids <- recompute_centroids_for_clusters(
+      mycentroids <- recompute_centroids(
         cluster_ids = out$clusters,
         feature_values = points_features,
         weights = weights,
@@ -2036,7 +2036,7 @@ sample_kmeans <- function(
 
       # Reflect the newly added members in their destination centroids
       # before these centroids are used for any further pruning.
-      mycentroids <- recompute_centroids_for_clusters(
+      mycentroids <- recompute_centroids(
         cluster_ids = out$clusters,
         feature_values = input,
         weights = weights,
