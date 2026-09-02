@@ -68,7 +68,8 @@ clustering?}
 
 \item{candidates}{Candidate pool for selecting cluster centers. Supports:
 \itemize{
-\item numeric indices for rows/points in \code{input};
+\item numeric indices for rows/points in \code{input} (data frame and point-vector
+inputs);
 \item a \code{data.frame} when \code{input} is a \code{data.frame} (same column names and
 classes; column order can differ);
 \item a \code{SpatVector} with points when \code{input} is a \code{SpatVector} with points
@@ -86,13 +87,12 @@ candidate records. Supported when \code{candidates} is an independent
 
 \item{candidate_weight_col}{Optional name of a numeric, positive weight
 column in candidate attributes. If both \code{candidate_weights} and
-\code{candidate_weight_col} are provided, \code{candidate_weights} takes
-precedence.}
+\code{candidate_weight_col} are provided, \code{candidate_weights} takes precedence.}
 
 \item{min_cluster_size}{Minimum number of assigned rows/cells required to
 retain a cluster. Clusters below this size are removed one at a time,
-smallest first, and reassigned to the nearest surviving cluster, with sizes
-refreshed after each removal.}
+smallest first, and reassigned to the nearest surviving cluster, with
+sizes refreshed after each removal.}
 
 \item{scale}{Center and scale variables.}
 
@@ -116,16 +116,17 @@ refreshed after each removal.}
 
 \item{seed}{See KMeans_rcpp.}
 
+\item{mini_batch}{Use MiniBatchKmeans (fast, less accurate).}
+
 \item{batch_size}{See MiniBatchKmeans.}
 
 \item{init_frac}{See MiniBatchKmeans.}
 
 \item{early_stop}{See MiniBatchKmeans.}
 
-\item{filename_cl}{File names for rasters with clusters (1) and distances
-(2).}
+\item{filename_cl}{File name for the output cluster raster.}
 
-\item{args_cl}{List with arguments for writing raster.}
+\item{args_cl}{List with arguments for writing the cluster raster.}
 
 \item{filename_d}{File name for distance rasters.}
 
@@ -137,14 +138,23 @@ refreshed after each removal.}
 
 \item{shp}{Write output locations as a shapefile.}
 
-\item{args_pts}{Arguments for writing output pointsx.}
+\item{args_pts}{Arguments for writing output points.}
 
 \item{cores}{Number of cpu cores to use.}
 
 \item{verbose}{Print messages during processing.}
-
-\item{MiniBatch}{Use MiniBatchKmeans (fast, less accurate).}
+}
+\value{
+A list with components \code{clusters}, \code{distances}, and \code{points}.
 }
 \description{
-Produces a set of points sampled from a raster or point dataset.
+Produces representative samples by clustering input data and selecting
+one center per cluster from observed records. The function accepts tabular
+data (\code{data.frame}), rasters (\code{SpatRaster}), and point vectors
+(\code{SpatVector} with point geometry), and can include geographic coordinates
+as clustering variables. Optional input weights affect sampling and distance
+ranking, while optional candidate constraints restrict which rows/points can
+be selected as final centers. Variables can be standardized, reweighted, and
+reduced with PCA before clustering. Outputs include cluster assignments,
+distances to assigned centroids, and selected center locations/indices.
 }

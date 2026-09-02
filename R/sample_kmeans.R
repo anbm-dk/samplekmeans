@@ -75,7 +75,7 @@
 #' @return A list with components `clusters`, `distances`, and `points`.
 #' @export
 #' @importFrom methods is
-#' @importFrom stats  complete.cases prcomp predict sd
+#' @importFrom stats  complete.cases prcomp predict sd setNames weighted.mean
 #' @importFrom rlang .data
 #' @importFrom methods is
 #' @importFrom tidyr drop_na
@@ -362,7 +362,7 @@ sample_kmeans <- function(
 
   renumber_clusters <- function(cluster_ids) {
     kept <- sort(unique(as.integer(cluster_ids[!is.na(cluster_ids)])))
-    map <- setNames(seq_along(kept), kept)
+    map <- stats::setNames(seq_along(kept), kept)
     out <- as.integer(cluster_ids)
     non_na <- !is.na(out)
     out[non_na] <- as.integer(map[as.character(out[non_na])])
@@ -448,6 +448,16 @@ sample_kmeans <- function(
       )
       cluster_ids[idx_move] <- remapped$new_cluster
       distances[idx_move] <- remapped$new_dist
+
+      # Refresh centroids of clusters that just gained members, so any
+      # further pruning in this loop reassigns against their true centers.
+      centroids_all <- recompute_centroids_for_clusters(
+        cluster_ids = cluster_ids,
+        feature_values = feature_values,
+        weights = weights,
+        affected_clusters = unique(remapped$new_cluster),
+        centroids_all = centroids_all
+      )
     }
 
     list(
@@ -455,6 +465,68 @@ sample_kmeans <- function(
       distances = distances,
       valid_clusters = valid_clusters
     )
+  }
+
+  # Puts raw feature rows into the same scaled/PCA space as the kmeans
+  # centroids, mirroring the per-row transform in row_distance_to_centroids.
+  transform_to_centroid_space <- function(raw_values) {
+    trans_df <- as.data.frame(raw_values)
+
+    if (scale == TRUE) {
+      trans_df <- trans_df |>
+        sweep(MARGIN = 2, STATS = means, check.margin = FALSE) |>
+        sweep(MARGIN = 2, FUN = "/", STATS = sds, check.margin = FALSE)
+    }
+
+    if (pca == TRUE) {
+      colnames(trans_df) <- pcs$rotation |> rownames()
+      trans_df <- stats::predict(pcs, newdata = trans_df)
+    }
+
+    as.matrix(trans_df)
+  }
+
+  # Recomputes the centroid of each affected cluster from its current
+  # members (weighted mean when weights are supplied), so distances used
+  # for later reassignments reflect the true, shifted cluster centers.
+  recompute_centroids_for_clusters <- function(
+    cluster_ids,
+    feature_values,
+    weights,
+    affected_clusters,
+    centroids_all
+  ) {
+    for (clust in affected_clusters) {
+      idx <- which(cluster_ids == clust)
+      if (length(idx) == 0) {
+        next
+      }
+
+      trans_rows <- transform_to_centroid_space(
+        feature_values[idx, , drop = FALSE]
+      )
+
+      w <- NULL
+      if (!is.null(weights)) {
+        w <- weights[idx]
+        w[!is.finite(w) | w < 0] <- 0
+      }
+
+      if (!is.null(w) && sum(w) > 0) {
+        new_centroid <- vapply(
+          seq_len(ncol(trans_rows)),
+          function(j) stats::weighted.mean(trans_rows[, j], w = w),
+          numeric(1)
+        )
+      } else {
+        # No usable weights for this cluster: fall back to a plain mean.
+        new_centroid <- colMeans(trans_rows, na.rm = TRUE)
+      }
+
+      centroids_all[clust, ] <- new_centroid
+    }
+
+    centroids_all
   }
 
   is_index_vector <- function(x) {
@@ -1515,6 +1587,16 @@ sample_kmeans <- function(
       )
       cluster_vals[idx_move] <- remapped$new_cluster
       dist_vals[idx_move] <- remapped$new_dist
+
+      # Reflect the newly added members in their destination centroids
+      # before these centroids are used for any further pruning.
+      mycentroids <- recompute_centroids_for_clusters(
+        cluster_ids = cluster_vals,
+        feature_values = feature_vals,
+        weights = weight_vals,
+        affected_clusters = unique(remapped$new_cluster),
+        centroids_all = mycentroids
+      )
     }
 
     clusters_before_pruning <- valid_clusters
@@ -1780,6 +1862,16 @@ sample_kmeans <- function(
       )
       out$clusters[idx_move] <- remapped$new_cluster
       out$distances[idx_move] <- remapped$new_dist
+
+      # Reflect the newly added members in their destination centroids
+      # before these centroids are used for any further pruning.
+      mycentroids <- recompute_centroids_for_clusters(
+        cluster_ids = out$clusters,
+        feature_values = points_features,
+        weights = weights,
+        affected_clusters = unique(remapped$new_cluster),
+        centroids_all = mycentroids
+      )
     }
 
     clusters_before_pruning <- valid_clusters
@@ -1941,6 +2033,16 @@ sample_kmeans <- function(
       )
       out$clusters[idx_move] <- remapped$new_cluster
       out$distances[idx_move] <- remapped$new_dist
+
+      # Reflect the newly added members in their destination centroids
+      # before these centroids are used for any further pruning.
+      mycentroids <- recompute_centroids_for_clusters(
+        cluster_ids = out$clusters,
+        feature_values = input,
+        weights = weights,
+        affected_clusters = unique(remapped$new_cluster),
+        centroids_all = mycentroids
+      )
     }
 
     clusters_before_pruning <- valid_clusters
