@@ -36,7 +36,7 @@ R.version.string
 ## 2: Other stuff
 
 # Creates and rmd for the readme, adds it to buildignore
-# usethis::use_readme_rmd()  
+# usethis::use_readme_rmd()
 
 # usethis::use_news_md()
 

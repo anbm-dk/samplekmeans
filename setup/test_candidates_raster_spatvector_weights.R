@@ -54,7 +54,14 @@ cat("Running focused raster + SpatVector candidate-weight tests...\n")
 set.seed(321)
 
 # Build clustered raster covariates
-r1 <- terra::rast(nrows = 60, ncols = 60, xmin = 0, xmax = 6, ymin = 0, ymax = 6)
+r1 <- terra::rast(
+  nrows = 60,
+  ncols = 60,
+  xmin = 0,
+  xmax = 6,
+  ymin = 0,
+  ymax = 6
+)
 r2 <- terra::rast(r1)
 xy <- terra::xyFromCell(r1, seq_len(terra::ncell(r1)))
 
@@ -108,14 +115,19 @@ out_col <- sample_kmeans(
   seed = 9
 )
 
-assert_true(is.list(out_col), "raster candidate_weight_col test: output is not a list.")
+assert_true(
+  is.list(out_col), "raster candidate_weight_col test: output is not a list."
+)
 assert_in_candidate_points(
   out_col$points,
   terra::crds(candidates_sv),
   "raster candidate_weight_col test"
 )
 
-cat("PASS: raster candidate_weight_col support works with SpatVector candidates.\n")
+cat(
+  "PASS: raster candidate_weight_col support works with SpatVector",
+  "candidates.\n"
+)
 
 # 2) precedence: both provided should warn and still run
 cw_vec <- rep(2, nrow(candidates_sv))
@@ -140,10 +152,17 @@ out_both <- withCallingHandlers(
 assert_true(is.list(out_both), "raster precedence test: output is not a list.")
 assert_true(
   !is.null(warn_msg),
-  "raster precedence test: expected warning when both candidate weight sources are provided."
+  paste0(
+    "raster precedence test: expected warning when both candidate ",
+    "weight sources are provided."
+  )
 )
 assert_true(
-  grepl("using candidate_weights and ignoring candidate_weight_col", warn_msg, fixed = TRUE),
+  grepl(
+    "using candidate_weights and ignoring candidate_weight_col",
+    warn_msg,
+    fixed = TRUE
+  ),
   "raster precedence test: warning message mismatch."
 )
 
@@ -166,7 +185,9 @@ assert_error(
   "raster zero candidate_weight_col validation"
 )
 
-cat("PASS: raster candidate_weight_col positive-value validation throws error.\n")
+cat(
+  "PASS: raster candidate_weight_col positive-value validation throws error.\n"
+)
 
 # 4) negative: candidate_weights length mismatch should fail
 assert_error(
@@ -178,7 +199,10 @@ assert_error(
     candidate_weights = c(1, 1, 1),
     seed = 9
   ),
-  "candidate_weights length does not match the number of candidate SpatVector records.",
+  paste0(
+    "candidate_weights length does not match the number of ",
+    "candidate SpatVector records."
+  ),
   "raster candidate_weights length mismatch"
 )
 

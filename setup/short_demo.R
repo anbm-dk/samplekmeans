@@ -3,7 +3,7 @@
 library(samplekmeans)
 library(terra)
 
-f <- system.file("ex/elev.tif", package="terra")
+f <- system.file("ex/elev.tif", package = "terra")
 r <- rast(f)
 
 set.seed(123)

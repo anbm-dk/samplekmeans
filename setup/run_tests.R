@@ -15,7 +15,8 @@ repo_root <- normalizePath(
 )
 
 # Fallback for contexts where sys.frame(1)$ofile is unavailable
-if (!dir.exists(repo_root) || !file.exists(file.path(repo_root, "DESCRIPTION"))) {
+if (!dir.exists(repo_root) ||
+      !file.exists(file.path(repo_root, "DESCRIPTION"))) {
   repo_root <- normalizePath(getwd(), winslash = "/", mustWork = TRUE)
 }
 

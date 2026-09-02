@@ -187,7 +187,10 @@ assert_true(
 )
 assert_true(
   length(unique(pts_out_mask$clusters[!is.na(pts_out_mask$clusters)])) == 1,
-  "points raster candidates test: expected all points reassigned to one cluster."
+  paste0(
+    "points raster candidates test: expected all points reassigned ",
+    "to one cluster."
+  )
 )
 
 cat("PASS: points raster candidates trigger pruning and reassignment.\n")
@@ -368,10 +371,17 @@ df_out_both <- withCallingHandlers(
 
 assert_true(
   !is.null(warn_msg),
-  "candidate weight precedence test: expected warning when both sources are provided."
+  paste0(
+    "candidate weight precedence test: expected warning when both sources ",
+    "are provided."
+  )
 )
 assert_true(
-  grepl("using candidate_weights and ignoring candidate_weight_col", warn_msg, fixed = TRUE),
+  grepl(
+    "using candidate_weights and ignoring candidate_weight_col",
+    warn_msg,
+    fixed = TRUE
+  ),
   "candidate weight precedence test: warning message mismatch."
 )
 cat("PASS: candidate_weights precedence over candidate_weight_col works.\n")
@@ -385,7 +395,10 @@ assert_error(
     candidate_weights = c(1, 1),
     seed = 7
   ),
-  "candidate_weights length does not match the number of candidate data.frame records.",
+  paste0(
+    "candidate_weights length does not match the number of candidate ",
+    "data.frame records."
+  ),
   "candidate_weights length mismatch validation"
 )
 
@@ -409,7 +422,9 @@ assert_in_candidates(
   "weighted data.frame input candidate match test"
 )
 
-cat("PASS: weighted data.frame input accepts candidates without weights column.\n")
+cat(
+  "PASS: weighted data.frame input accepts candidates without weights column.\n"
+)
 
 # 15) candidate_weight_col support for SpatVector candidates
 pts_candidates_sv_w <- pts_input[pts_candidates_idx, ]
@@ -449,6 +464,9 @@ assert_in_candidates(
   "weighted points input candidate match test"
 )
 
-cat("PASS: weighted points input accepts SpatVector candidates without weights column.\n")
+cat(
+  "PASS: weighted points input accepts SpatVector candidates",
+  "without weights column.\n"
+)
 
 cat("All focused non-raster candidate tests passed.\n")

@@ -128,5 +128,6 @@ their rows/cells are reassigned to surviving clusters. Cluster IDs are then
 renumbered to `1..K`.
 
 You can also enforce a minimum cluster size with `min_cluster_size`. Clusters
-with fewer assigned rows/cells than this threshold are removed and reassigned
-in the same way.
+with fewer assigned rows/cells than this threshold are removed one at a
+time, smallest first, and reassigned to the nearest surviving cluster, with
+cluster sizes refreshed after each removal.

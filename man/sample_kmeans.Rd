@@ -90,8 +90,9 @@ column in candidate attributes. If both \code{candidate_weights} and
 precedence.}
 
 \item{min_cluster_size}{Minimum number of assigned rows/cells required to
-retain a cluster. Clusters below this size are deleted and reassigned to the
-nearest surviving cluster.}
+retain a cluster. Clusters below this size are removed one at a time,
+smallest first, and reassigned to the nearest surviving cluster, with sizes
+refreshed after each removal.}
 
 \item{scale}{Center and scale variables.}
 

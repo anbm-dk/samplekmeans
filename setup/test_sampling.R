@@ -66,10 +66,26 @@ out_r <- sample_kmeans(
 )
 
 assert_basic_output(out_r, "raster smoke test")
-assert_true(inherits(out_r$clusters, "SpatRaster"), "raster smoke test: clusters should be SpatRaster.")
-assert_true(inherits(out_r$distances, "SpatRaster"), "raster smoke test: distances should be SpatRaster.")
-assert_true(is.data.frame(out_r$points), "raster smoke test: points should be data.frame.")
-assert_true(nrow(out_r$points) >= 1, "raster smoke test: expected at least one selected center.")
+assert_true(
+  inherits(
+    out_r$clusters, "SpatRaster"
+  ),
+  "raster smoke test: clusters should be SpatRaster."
+)
+assert_true(
+  inherits(
+    out_r$distances, "SpatRaster"
+  ),
+  "raster smoke test: distances should be SpatRaster."
+)
+assert_true(
+  is.data.frame(out_r$points),
+  "raster smoke test: points should be data.frame."
+)
+assert_true(
+  nrow(out_r$points) >= 1,
+  "raster smoke test: expected at least one selected center."
+)
 
 cat("PASS: raster smoke test.\n")
 
@@ -93,7 +109,13 @@ out_r_cand <- sample_kmeans(
 )
 
 assert_basic_output(out_r_cand, "raster weighted+candidates smoke test")
-assert_true(nrow(out_r_cand$points) >= 1, "raster weighted+candidates smoke test: expected at least one selected center.")
+assert_true(
+  nrow(out_r_cand$points) >= 1,
+  paste(
+    "raster weighted+candidates smoke test:",
+    "expected at least one selected center."
+  )
+)
 
 cat("PASS: raster weighted + raster candidates smoke test.\n")
 
@@ -128,7 +150,10 @@ out_r_pts <- sample_kmeans(
 )
 
 assert_basic_output(out_r_pts, "raster + point candidates smoke test")
-assert_true(nrow(out_r_pts$points) >= 1, "raster + point candidates smoke test: expected at least one selected center.")
+assert_true(
+  nrow(out_r_pts$points) >= 1,
+  "raster + point candidates smoke test: expected at least one selected center."
+)
 
 cat("PASS: raster + point candidates smoke test.\n")
 
@@ -151,8 +176,14 @@ out_pts <- sample_kmeans(
 )
 
 assert_basic_output(out_pts, "points smoke test")
-assert_true(length(out_pts$clusters) == nrow(pts_df), "points smoke test: cluster assignment length mismatch.")
-assert_true(length(out_pts$distances) == nrow(pts_df), "points smoke test: distance length mismatch.")
+assert_true(
+  length(out_pts$clusters) == nrow(pts_df),
+  "points smoke test: cluster assignment length mismatch."
+)
+assert_true(
+  length(out_pts$distances) == nrow(pts_df),
+  "points smoke test: distance length mismatch."
+)
 
 cat("PASS: points smoke test.\n")
 
@@ -167,12 +198,19 @@ out_df <- sample_kmeans(
 )
 
 assert_basic_output(out_df, "data.frame smoke test")
-assert_true(length(out_df$clusters) == nrow(iris), "data.frame smoke test: cluster assignment length mismatch.")
-assert_true(length(out_df$distances) == nrow(iris), "data.frame smoke test: distance length mismatch.")
+assert_true(
+  length(out_df$clusters) == nrow(iris),
+  "data.frame smoke test: cluster assignment length mismatch."
+)
+assert_true(
+  length(out_df$distances) == nrow(iris),
+  "data.frame smoke test: distance length mismatch."
+)
 
 cat("PASS: data.frame smoke test.\n")
 
-# 6) data.frame sampling is reproducible when ncells triggers pre-kmeans sampling
+# 6) data.frame sampling is reproducible when ncells triggers
+# pre-kmeans sampling
 df_rep <- data.frame(
   a = c(rnorm(60, -2, 0.2), rnorm(60, 2, 0.2)),
   b = c(rnorm(60, -2, 0.2), rnorm(60, 2, 0.2))
@@ -248,7 +286,10 @@ out_r_rep_2 <- sample_kmeans(
 
 assert_true(
   identical(out_r_rep_1$points, out_r_rep_2$points),
-  "raster weighted reproducibility test: selected points differ across repeated seeded runs."
+  paste(
+    "raster weighted reproducibility test: selected points differ",
+    "across repeated seeded runs."
+  )
 )
 
 cat("PASS: raster weighted seeded sampling is reproducible.\n")
@@ -274,7 +315,10 @@ assert_true(
 )
 assert_true(
   nrow(df_min_out$points) == length(cluster_sizes),
-  "min_cluster_size test: number of selected centers does not match final clusters."
+  paste(
+    "min_cluster_size test: number of selected centers does not match",
+    "final clusters."
+  )
 )
 
 cat("PASS: min_cluster_size prunes undersized clusters.\n")

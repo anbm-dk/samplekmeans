@@ -44,8 +44,9 @@
 #' column in candidate attributes. If both `candidate_weights` and
 #' `candidate_weight_col` are provided, `candidate_weights` takes precedence.
 #' @param min_cluster_size Minimum number of assigned rows/cells required to
-#' retain a cluster. Clusters below this size are deleted and reassigned to
-#' the nearest surviving cluster.
+#' retain a cluster. Clusters below this size are removed one at a time,
+#' smallest first, and reassigned to the nearest surviving cluster, with
+#' sizes refreshed after each removal.
 #' @param scale Center and scale variables.
 #' @param pca Use principal component analysis on variables.
 #' @param tol_pca Tolerance for pca (remove PCs below threshold).
@@ -366,6 +367,94 @@ sample_kmeans <- function(
     non_na <- !is.na(out)
     out[non_na] <- as.integer(map[as.character(out[non_na])])
     out
+  }
+
+  # Reassigns given rows/cells to their nearest centroid among a
+  # restricted set of surviving clusters.
+  reassign_to_valid_clusters <- function(
+    idx_move,
+    feature_values,
+    valid_clusters,
+    centroids_all,
+    weights = NULL
+  ) {
+    map_valid_fun <- make_map_clusters_fun(
+      centroids_all[valid_clusters, , drop = FALSE]
+    )
+    remap <- apply(
+      feature_values[idx_move, , drop = FALSE],
+      1,
+      map_valid_fun
+    ) |>
+      t()
+
+    new_idx <- as.integer(remap[, 1])
+    new_dist <- as.numeric(remap[, 2])
+
+    if (!is.null(weights)) {
+      w_sub <- weights[idx_move]
+      dist_sub <- rep(NA_real_, length(new_dist))
+      pos <- w_sub > 0
+      dist_sub[pos] <- new_dist[pos] / w_sub[pos]
+      new_dist <- dist_sub
+    }
+
+    list(
+      new_cluster = valid_clusters[new_idx],
+      new_dist = new_dist
+    )
+  }
+
+  # Removes the smallest surviving cluster one at a time, reassigning its
+  # members and refreshing sizes, until the smallest meets the threshold.
+  prune_small_clusters <- function(
+    cluster_ids,
+    distances,
+    feature_values,
+    valid_clusters,
+    centroids_all,
+    min_cluster_size,
+    weights = NULL
+  ) {
+    repeat {
+      if (length(valid_clusters) == 0) {
+        break
+      }
+
+      sizes <- cluster_size_df(cluster_ids)
+      sizes <- sizes[sizes$clust %in% valid_clusters, , drop = FALSE]
+      smallest_size <- min(sizes$size)
+
+      if (smallest_size >= min_cluster_size) {
+        break
+      }
+
+      smallest_clust <- min(sizes$clust[sizes$size == smallest_size])
+      valid_clusters <- setdiff(valid_clusters, smallest_clust)
+      idx_move <- which(cluster_ids == smallest_clust)
+
+      if (length(valid_clusters) == 0) {
+        cluster_ids[idx_move] <- NA_integer_
+        distances[idx_move] <- NA_real_
+        break
+      }
+
+      remapped <- reassign_to_valid_clusters(
+        idx_move = idx_move,
+        feature_values = feature_values,
+        valid_clusters = valid_clusters,
+        centroids_all = centroids_all,
+        weights = weights
+      )
+      cluster_ids[idx_move] <- remapped$new_cluster
+      distances[idx_move] <- remapped$new_dist
+    }
+
+    list(
+      clusters = cluster_ids,
+      distances = distances,
+      valid_clusters = valid_clusters
+    )
   }
 
   is_index_vector <- function(x) {
@@ -1352,6 +1441,12 @@ sample_kmeans <- function(
     }
 
     cluster_vals <- terra::values(out$clusters, mat = FALSE)
+    dist_vals <- terra::values(out$distances, mat = FALSE)
+    feature_vals <- terra::values(input, mat = TRUE)
+    weight_vals <- NULL
+    if (!is.null(weights)) {
+      weight_vals <- terra::values(weights, mat = FALSE)
+    }
     size_df <- cluster_size_df(cluster_vals)
 
     if (candidates_ispts) {
@@ -1386,7 +1481,12 @@ sample_kmeans <- function(
         mindist = as.numeric(eval_raw[, 2])
       )
     } else {
-      eval_raw <- terra::zonal(out$distances, out$clusters, "min", na.rm = TRUE)
+      eval_raw <- terra::zonal(
+        out$distances,
+        out$clusters,
+        "min",
+        na.rm = TRUE
+      )
       eval_df <- data.frame(
         clust = as.integer(eval_raw[, 1]),
         mindist = as.numeric(eval_raw[, 2])
@@ -1394,78 +1494,54 @@ sample_kmeans <- function(
     }
 
     viable_clusters <- eval_df$clust
-    small_clusters <- size_df$clust[size_df$size < min_cluster_size]
-    invalid_clusters <- sort(unique(c(
-      setdiff(size_df$clust, viable_clusters),
-      small_clusters
-    )))
+    invalid_candidates <- setdiff(size_df$clust, viable_clusters)
+    valid_clusters <- sort(setdiff(size_df$clust, invalid_candidates))
 
-    if (length(invalid_clusters) > 0) {
-      valid_clusters <- sort(setdiff(size_df$clust, invalid_clusters))
-      if (length(valid_clusters) == 0) {
-        stop(
-          "All clusters were removed by candidate constraints and/or ",
-          "min_cluster_size."
-        )
-      }
-
-      map_valid_fun <- make_map_clusters_fun(
-        mycentroids[valid_clusters, , drop = FALSE]
+    if (length(valid_clusters) == 0) {
+      stop(
+        "All clusters were removed by candidate constraints and/or ",
+        "min_cluster_size."
       )
-      remap <- terra::app(input, fun = map_valid_fun)
+    }
 
-      remap_clusters <- terra::app(remap[[1]], fun = function(x) {
-        out <- rep(NA_real_, length(x))
-        ok <- !is.na(x)
-        out[ok] <- valid_clusters[as.integer(x[ok])]
-        out
-      })
-      remap_distances <- remap[[2]]
-
-      if (!is.null(weights)) {
-        remap_distances <- terra::lapp(
-          c(remap_distances, weights),
-          fun = function(dist_val, weight_val) {
-            out <- rep(NA_real_, length(dist_val))
-            ok <- !is.na(dist_val) & !is.na(weight_val) & (weight_val != 0)
-            out[ok] <- dist_val[ok] / weight_val[ok]
-            out
-          }
-        )
-      }
-
-      clusters_before_reassign <- out$clusters
-
-      out$clusters <- terra::lapp(
-        c(clusters_before_reassign, remap_clusters),
-        fun = function(base_cluster, remap_cluster) {
-          out <- base_cluster
-          idx <- !is.na(base_cluster) & (base_cluster %in% invalid_clusters)
-          out[idx] <- remap_cluster[idx]
-          out
-        }
+    if (length(invalid_candidates) > 0) {
+      idx_move <- which(cluster_vals %in% invalid_candidates)
+      remapped <- reassign_to_valid_clusters(
+        idx_move = idx_move,
+        feature_values = feature_vals,
+        valid_clusters = valid_clusters,
+        centroids_all = mycentroids,
+        weights = weight_vals
       )
+      cluster_vals[idx_move] <- remapped$new_cluster
+      dist_vals[idx_move] <- remapped$new_dist
+    }
 
-      out$distances <- terra::lapp(
-        c(clusters_before_reassign, out$distances, remap_distances),
-        fun = function(base_cluster, old_distance, remap_distance) {
-          out <- old_distance
-          out[is.na(base_cluster)] <- NA
-          idx <- !is.na(base_cluster) & (base_cluster %in% invalid_clusters)
-          out[idx] <- remap_distance[idx]
-          out
-        }
+    clusters_before_pruning <- valid_clusters
+    pruned <- prune_small_clusters(
+      cluster_ids = cluster_vals,
+      distances = dist_vals,
+      feature_values = feature_vals,
+      valid_clusters = valid_clusters,
+      centroids_all = mycentroids,
+      min_cluster_size = min_cluster_size,
+      weights = weight_vals
+    )
+    if (length(pruned$valid_clusters) == 0) {
+      stop(
+        "All clusters were removed by candidate constraints and/or ",
+        "min_cluster_size."
       )
+    }
+    cluster_vals <- pruned$clusters
+    dist_vals <- pruned$distances
 
-      out$clusters <- terra::app(out$clusters, fun = function(x) {
-        out <- rep(NA_real_, length(x))
-        ok <- !is.na(x)
-        out[ok] <- match(as.integer(x[ok]), valid_clusters)
-        out
-      })
+    removed_any <- length(invalid_candidates) > 0 ||
+      length(pruned$valid_clusters) < length(clusters_before_pruning)
 
-      final_vals <- terra::values(out$clusters, mat = FALSE)
-      final_k <- length(unique(final_vals[!is.na(final_vals)]))
+    if (removed_any) {
+      cluster_vals <- renumber_clusters(cluster_vals)
+      final_k <- length(unique(cluster_vals[!is.na(cluster_vals)]))
       if (final_k < clusters) {
         warning(
           "Requested ", clusters,
@@ -1474,6 +1550,9 @@ sample_kmeans <- function(
         )
       }
     }
+
+    terra::values(out$clusters) <- cluster_vals
+    terra::values(out$distances) <- dist_vals
 
     if (!is.null(filename_d)) {
       do.call(
@@ -1678,48 +1757,54 @@ sample_kmeans <- function(
       candidate_weights_eval
     )
     viable_clusters <- eval_df$clust
-    small_clusters <- size_df$clust[size_df$size < min_cluster_size]
-    invalid_clusters <- sort(unique(c(
-      setdiff(size_df$clust, viable_clusters),
-      small_clusters
-    )))
+    invalid_candidates <- setdiff(size_df$clust, viable_clusters)
+    valid_clusters <- sort(setdiff(size_df$clust, invalid_candidates))
 
-    if (length(invalid_clusters) > 0) {
-      valid_clusters <- sort(setdiff(size_df$clust, invalid_clusters))
-      if (length(valid_clusters) == 0) {
-        stop(
-          "All clusters were removed by candidate constraints and/or ",
-          "min_cluster_size."
-        )
-      }
+    if (length(valid_clusters) == 0) {
+      stop(
+        "All clusters were removed by candidate constraints and/or ",
+        "min_cluster_size."
+      )
+    }
 
-      idx_move <- which(out$clusters %in% invalid_clusters)
-      if (length(idx_move) > 0) {
-        points_features <- terra::values(input)
-        map_valid_fun <- make_map_clusters_fun(
-          mycentroids[valid_clusters, , drop = FALSE]
-        )
-        remap <- apply(
-          points_features[idx_move, , drop = FALSE],
-          1,
-          map_valid_fun
-        ) |>
-          t()
+    points_features <- terra::values(input)
 
-        new_idx <- as.integer(remap[, 1])
-        new_dist <- as.numeric(remap[, 2])
-        if (!is.null(weights)) {
-          w_sub <- weights[idx_move]
-          dist_sub <- rep(NA_real_, length(new_dist))
-          pos <- w_sub > 0
-          dist_sub[pos] <- new_dist[pos] / w_sub[pos]
-          new_dist <- dist_sub
-        }
+    if (length(invalid_candidates) > 0) {
+      idx_move <- which(out$clusters %in% invalid_candidates)
+      remapped <- reassign_to_valid_clusters(
+        idx_move = idx_move,
+        feature_values = points_features,
+        valid_clusters = valid_clusters,
+        centroids_all = mycentroids,
+        weights = weights
+      )
+      out$clusters[idx_move] <- remapped$new_cluster
+      out$distances[idx_move] <- remapped$new_dist
+    }
 
-        out$clusters[idx_move] <- valid_clusters[new_idx]
-        out$distances[idx_move] <- new_dist
-      }
+    clusters_before_pruning <- valid_clusters
+    pruned <- prune_small_clusters(
+      cluster_ids = out$clusters,
+      distances = out$distances,
+      feature_values = points_features,
+      valid_clusters = valid_clusters,
+      centroids_all = mycentroids,
+      min_cluster_size = min_cluster_size,
+      weights = weights
+    )
+    if (length(pruned$valid_clusters) == 0) {
+      stop(
+        "All clusters were removed by candidate constraints and/or ",
+        "min_cluster_size."
+      )
+    }
+    out$clusters <- pruned$clusters
+    out$distances <- pruned$distances
 
+    removed_any <- length(invalid_candidates) > 0 ||
+      length(pruned$valid_clusters) < length(clusters_before_pruning)
+
+    if (removed_any) {
       out$clusters <- renumber_clusters(out$clusters)
       final_k <- length(unique(out$clusters[!is.na(out$clusters)]))
       if (final_k < clusters) {
@@ -1835,43 +1920,52 @@ sample_kmeans <- function(
       candidate_weights_eval
     )
     viable_clusters <- eval_df$clust
-    small_clusters <- size_df$clust[size_df$size < min_cluster_size]
-    invalid_clusters <- sort(unique(c(
-      setdiff(size_df$clust, viable_clusters),
-      small_clusters
-    )))
+    invalid_candidates <- setdiff(size_df$clust, viable_clusters)
+    valid_clusters <- sort(setdiff(size_df$clust, invalid_candidates))
 
-    if (length(invalid_clusters) > 0) {
-      valid_clusters <- sort(setdiff(size_df$clust, invalid_clusters))
-      if (length(valid_clusters) == 0) {
-        stop(
-          "All clusters were removed by candidate constraints and/or ",
-          "min_cluster_size."
-        )
-      }
+    if (length(valid_clusters) == 0) {
+      stop(
+        "All clusters were removed by candidate constraints and/or ",
+        "min_cluster_size."
+      )
+    }
 
-      idx_move <- which(out$clusters %in% invalid_clusters)
-      if (length(idx_move) > 0) {
-        map_valid_fun <- make_map_clusters_fun(
-          mycentroids[valid_clusters, , drop = FALSE]
-        )
-        remap <- apply(input[idx_move, , drop = FALSE], 1, map_valid_fun) |>
-          t()
+    if (length(invalid_candidates) > 0) {
+      idx_move <- which(out$clusters %in% invalid_candidates)
+      remapped <- reassign_to_valid_clusters(
+        idx_move = idx_move,
+        feature_values = input,
+        valid_clusters = valid_clusters,
+        centroids_all = mycentroids,
+        weights = weights
+      )
+      out$clusters[idx_move] <- remapped$new_cluster
+      out$distances[idx_move] <- remapped$new_dist
+    }
 
-        new_idx <- as.integer(remap[, 1])
-        new_dist <- as.numeric(remap[, 2])
-        if (!is.null(weights)) {
-          w_sub <- weights[idx_move]
-          dist_sub <- rep(NA_real_, length(new_dist))
-          pos <- w_sub > 0
-          dist_sub[pos] <- new_dist[pos] / w_sub[pos]
-          new_dist <- dist_sub
-        }
+    clusters_before_pruning <- valid_clusters
+    pruned <- prune_small_clusters(
+      cluster_ids = out$clusters,
+      distances = out$distances,
+      feature_values = input,
+      valid_clusters = valid_clusters,
+      centroids_all = mycentroids,
+      min_cluster_size = min_cluster_size,
+      weights = weights
+    )
+    if (length(pruned$valid_clusters) == 0) {
+      stop(
+        "All clusters were removed by candidate constraints and/or ",
+        "min_cluster_size."
+      )
+    }
+    out$clusters <- pruned$clusters
+    out$distances <- pruned$distances
 
-        out$clusters[idx_move] <- valid_clusters[new_idx]
-        out$distances[idx_move] <- new_dist
-      }
+    removed_any <- length(invalid_candidates) > 0 ||
+      length(pruned$valid_clusters) < length(clusters_before_pruning)
 
+    if (removed_any) {
       out$clusters <- renumber_clusters(out$clusters)
       final_k <- length(unique(out$clusters[!is.na(out$clusters)]))
       if (final_k < clusters) {

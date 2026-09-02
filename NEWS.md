@@ -3,6 +3,9 @@
 ## samplekmeans 1.1.0
 
 * Merged `feature/prune-empty-small-clusters` into `main`.
+* `min_cluster_size` now prunes undersized clusters iteratively, removing
+    the smallest cluster one at a time and refreshing cluster sizes after
+    each removal, instead of removing all undersized clusters in one pass.
 * Improved handling of small or empty clusters during center selection for
     more robust sampling behavior.
 * Expanded and refreshed tests/documentation to cover the updated behavior.
