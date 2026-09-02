@@ -75,7 +75,7 @@
 #' @return A list with components `clusters`, `distances`, and `points`.
 #' @export
 #' @importFrom methods is
-#' @importFrom stats  complete.cases prcomp predict sd weighted.mean
+#' @importFrom stats  complete.cases prcomp predict sd setNames weighted.mean
 #' @importFrom rlang .data
 #' @importFrom methods is
 #' @importFrom tidyr drop_na
@@ -362,7 +362,7 @@ sample_kmeans <- function(
 
   renumber_clusters <- function(cluster_ids) {
     kept <- sort(unique(as.integer(cluster_ids[!is.na(cluster_ids)])))
-    map <- setNames(seq_along(kept), kept)
+    map <- stats::setNames(seq_along(kept), kept)
     out <- as.integer(cluster_ids)
     non_na <- !is.na(out)
     out[non_na] <- as.integer(map[as.character(out[non_na])])
