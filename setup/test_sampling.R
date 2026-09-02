@@ -323,6 +323,71 @@ assert_true(
 
 cat("PASS: min_cluster_size prunes undersized clusters.\n")
 
+# 9b) min_cluster_size with several undersized clusters of different sizes
+# forces the pruning loop to run multiple iterations (smallest cluster
+# removed and reassigned one at a time), exercising centroid recompute
+# across iterations. Weights are included so the weighted-centroid
+# recompute path also runs.
+set.seed(228)
+df_multi_prune <- data.frame(
+  a = c(
+    rnorm(60, -3, 0.2), rnorm(60, 3, 0.2),
+    rnorm(3, -6, 0.1), rnorm(4, 6, 0.1), rnorm(6, 0, 0.1)
+  ),
+  b = c(
+    rnorm(60, -3, 0.2), rnorm(60, 3, 0.2),
+    rnorm(3, -6, 0.1), rnorm(4, 6, 0.1), rnorm(6, 0, 0.1)
+  )
+)
+weights_multi_prune <- runif(nrow(df_multi_prune), min = 0.5, max = 2)
+
+df_multi_prune_out1 <- sample_kmeans(
+  input = df_multi_prune,
+  clusters = 5,
+  min_cluster_size = 10,
+  weights = weights_multi_prune,
+  seed = 228
+)
+df_multi_prune_out2 <- sample_kmeans(
+  input = df_multi_prune,
+  clusters = 5,
+  min_cluster_size = 10,
+  weights = weights_multi_prune,
+  seed = 228
+)
+
+multi_prune_sizes <- table(df_multi_prune_out1$clusters)
+assert_true(
+  all(multi_prune_sizes >= 10),
+  paste(
+    "multi-iteration min_cluster_size test: found clusters smaller than",
+    "requested minimum."
+  )
+)
+assert_true(
+  nrow(df_multi_prune_out1$points) == length(multi_prune_sizes),
+  paste(
+    "multi-iteration min_cluster_size test: number of selected centers",
+    "does not match final clusters."
+  )
+)
+assert_true(
+  identical(df_multi_prune_out1$clusters, df_multi_prune_out2$clusters),
+  paste(
+    "multi-iteration min_cluster_size test: cluster assignments differ",
+    "across repeated seeded runs."
+  )
+)
+assert_true(
+  identical(df_multi_prune_out1$points, df_multi_prune_out2$points),
+  paste(
+    "multi-iteration min_cluster_size test: selected points differ",
+    "across repeated seeded runs."
+  )
+)
+
+cat("PASS: min_cluster_size handles multiple pruning iterations.\n")
+
 # 10) min_cluster_size that removes all clusters should fail clearly
 assert_error(
   sample_kmeans(
